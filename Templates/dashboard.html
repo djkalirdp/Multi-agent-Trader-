@@ -1,1 +1,223 @@
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Dashboard — AI Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#060a0e;--bg2:#0a0f15;--bg3:#0e161f;--bg4:#121d27;--border:#1a2a38;--border2:#223040;--accent:#00d4ff;--accent2:#0099cc;--green:#00ff88;--red:#ff4466;--amber:#ffb340;--purple:#b794f4;--text:#c9d8e8;--text2:#7a9bb5;--text3:#3d5a72;--card:#0b1520}
+html{font-size:13px;scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:48px 48px;opacity:.12;pointer-events:none;z-index:0}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+nav{position:sticky;top:0;z-index:200;background:rgba(6,10,14,.96);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);height:52px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.nav-left{display:flex;align-items:center;gap:16px}
+.nav-logo{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px;white-space:nowrap}
+.agent-status-pill{display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1px;transition:all .3s}
+.agent-status-pill.running{border-color:rgba(0,255,136,.3);color:var(--green)}.agent-status-pill.stopped{border-color:var(--border);color:var(--text3)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--text3);transition:background .3s}
+.running .status-dot{background:var(--green);animation:blink 1.5s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1;box-shadow:0 0 6px var(--green)}50%{opacity:.4;box-shadow:none}}
+.nav-center{display:flex;gap:4px}.nav-center a{color:var(--text2);text-decoration:none;font-size:11px;font-weight:600;letter-spacing:.8px;padding:5px 12px;border-radius:4px;transition:all .2s}
+.nav-center a:hover,.nav-center a.active{color:var(--accent);background:rgba(0,212,255,.07)}
+.nav-right{display:flex;align-items:center;gap:8px}
+.mode-tag{font-family:'Space Mono',monospace;font-size:10px;padding:3px 10px;border-radius:12px;letter-spacing:1px}
+.mode-tag.paper{background:rgba(0,255,136,.1);color:var(--green);border:1px solid rgba(0,255,136,.2)}.mode-tag.live{background:rgba(255,68,102,.1);color:var(--red);border:1px solid rgba(255,68,102,.2)}
+.clock{font-family:'Space Mono',monospace;font-size:12px;color:var(--text2)}
+.ctrl-bar{position:relative;z-index:1;background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;padding:7px 16px;border-radius:5px;border:1px solid;cursor:pointer;transition:all .2s;white-space:nowrap;background:transparent}
+.btn-start{border-color:rgba(0,255,136,.3);color:var(--green)}.btn-start:hover{background:rgba(0,255,136,.1);box-shadow:0 0 14px rgba(0,255,136,.2)}
+.btn-stop{border-color:rgba(255,180,64,.3);color:var(--amber)}.btn-stop:hover{background:rgba(255,180,64,.1)}
+.btn-kill{border-color:rgba(255,68,102,.35);color:var(--red)}.btn-kill:hover{background:rgba(255,68,102,.1)}
+.btn-scan{border-color:rgba(0,212,255,.25);color:var(--accent)}.btn-scan:hover{background:rgba(0,212,255,.08)}
+.btn-sq{border-color:rgba(183,148,244,.25);color:var(--purple)}.btn-sq:hover{background:rgba(183,148,244,.08)}
+.btn:disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
+.main{position:relative;z-index:1;display:grid;grid-template-columns:1fr 320px;height:calc(100vh - 52px - 48px)}
+.left-pane{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+.pnl-strip{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--border);flex-shrink:0}
+.pnl-cell{padding:10px 14px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:3px}.pnl-cell:last-child{border-right:none}
+.pnl-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase}
+.pnl-value{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;color:var(--text)}.pnl-value.pos{color:var(--green)}.pnl-value.neg{color:var(--red)}
+.pnl-sub{font-family:'Space Mono',monospace;font-size:9px;color:var(--text3)}
+.tab-bar{display:flex;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+.tab{padding:10px 16px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+.tab:hover{color:var(--text2)}.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-content{flex:1;overflow:hidden;position:relative}
+.tab-panel{display:none;height:100%;overflow-y:auto;padding:14px}.tab-panel.active{display:block}
+.data-table{width:100%;border-collapse:collapse}
+.data-table th{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--border);text-align:left;position:sticky;top:0;background:var(--bg);z-index:2}
+.data-table td{padding:8px 10px;border-bottom:1px solid rgba(26,42,56,.5);font-family:'Space Mono',monospace;font-size:11px;vertical-align:middle}
+.data-table tr:hover td{background:rgba(0,212,255,.02)}
+.sym-cell{font-weight:700;color:#fff}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px;letter-spacing:.5px}
+.tag.up{background:rgba(0,255,136,.1);color:var(--green);border:1px solid rgba(0,255,136,.2)}.tag.down{background:rgba(255,68,102,.1);color:var(--red);border:1px solid rgba(255,68,102,.2)}.tag.range{background:rgba(255,180,64,.1);color:var(--amber);border:1px solid rgba(255,180,64,.2)}.tag.vol{background:rgba(183,148,244,.1);color:var(--purple);border:1px solid rgba(183,148,244,.2)}
+.pos{color:var(--green)}.neg{color:var(--red)}.muted{color:var(--text2)}
+.selection-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.sel-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;transition:border-color .2s;position:relative;overflow:hidden}
+.sel-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.sel-card.long::before{background:linear-gradient(90deg,var(--green),transparent)}.sel-card.short::before{background:linear-gradient(90deg,var(--red),transparent)}
+.sel-card:hover{border-color:var(--border2)}
+.sel-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.sel-sym{font-size:17px;font-weight:800;color:#fff}
+.sel-conv{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px}
+.sel-conv.high{background:rgba(0,255,136,.15);color:var(--green);border:1px solid rgba(0,255,136,.3)}.sel-conv.mid{background:rgba(255,180,64,.15);color:var(--amber);border:1px solid rgba(255,180,64,.3)}
+.sel-dir{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1px;margin-bottom:7px}
+.sel-reason{font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px}
+.sel-levels{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.level-box{background:var(--bg3);border-radius:4px;padding:5px 7px}.level-box .lbl{font-family:'Space Mono',monospace;font-size:8px;color:var(--text3);letter-spacing:1px;text-transform:uppercase}.level-box .val{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;margin-top:2px}
+.strat-badge{margin-top:8px;padding:5px 8px;border-radius:4px;background:rgba(0,212,255,.06);border:1px solid rgba(0,212,255,.15);font-family:'Space Mono',monospace;font-size:9px;color:var(--accent);letter-spacing:.5px;line-height:1.4}
+.log-wrap{height:100%;overflow-y:auto}
+.log-inner{display:flex;flex-direction:column;gap:1px;padding:8px}
+.log-line{display:flex;gap:10px;align-items:flex-start;padding:3px 8px;border-radius:3px;font-family:'Space Mono',monospace;font-size:10px;line-height:1.5}
+.log-line:hover{background:rgba(255,255,255,.02)}
+.log-time{color:var(--text3);white-space:nowrap;flex-shrink:0}
+.log-INFO{color:var(--text2)}.log-SUCCESS{color:var(--green)}.log-WARN{color:var(--amber)}.log-ERROR{color:var(--red)}.log-TRADE{color:var(--purple);font-weight:700}
+.right-pane{overflow-y:auto;border-left:1px solid var(--border);display:flex;flex-direction:column}
+.rpane-section{border-bottom:1px solid var(--border);padding:14px}
+.rpane-title{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);text-transform:uppercase;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.rpane-title span{color:var(--accent);font-size:10px}
+.risk-bar-wrap{margin-top:8px}.risk-bar-label{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:4px}
+.risk-bar-bg{background:var(--bg3);border-radius:3px;height:5px;overflow:hidden}
+.risk-bar-fill{height:100%;border-radius:3px;transition:width .5s ease}
+.risk-bar-fill.safe{background:var(--green)}.risk-bar-fill.warn{background:var(--amber)}.risk-bar-fill.danger{background:var(--red)}
+.metric-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(26,42,56,.4);font-family:'Space Mono',monospace;font-size:10px}.metric-row:last-child{border-bottom:none}
+.metric-key{color:var(--text3)}.metric-val{color:var(--text);font-weight:700}.metric-val.g{color:var(--green)}.metric-val.r{color:var(--red)}
+.bias-badge{display:inline-block;font-family:'Space Mono',monospace;font-size:10px;padding:4px 14px;border-radius:12px;letter-spacing:1px;font-weight:700}
+.bias-BULLISH{background:rgba(0,255,136,.12);color:var(--green);border:1px solid rgba(0,255,136,.25)}.bias-BEARISH{background:rgba(255,68,102,.12);color:var(--red);border:1px solid rgba(255,68,102,.25)}.bias-NEUTRAL{background:rgba(255,180,64,.12);color:var(--amber);border:1px solid rgba(255,180,64,.25)}
+.empty{text-align:center;padding:40px 20px;color:var(--text3);font-family:'Space Mono',monospace;font-size:11px;line-height:2}
+.toast{position:fixed;bottom:24px;right:24px;z-index:999;min-width:260px;background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:12px 16px;font-family:'Space Mono',monospace;font-size:10px;display:flex;gap:10px;align-items:flex-start;transform:translateY(80px);opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{border-color:rgba(0,255,136,.3);color:var(--green)}.toast.error{border-color:rgba(255,68,102,.3);color:var(--red)}.toast.info{border-color:rgba(0,212,255,.3);color:var(--accent)}.toast.warn{border-color:rgba(255,180,64,.3);color:var(--amber)}
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-left">
+    <div class="nav-logo">TRADE_AGENT</div>
+    <div class="agent-status-pill stopped" id="agentPill">
+      <div class="status-dot"></div><span id="agentPillText">OFFLINE</span>
+    </div>
+  </div>
+  <div class="nav-center">
+    <a href="/settings">SETTINGS</a>
+    <a href="/dashboard" class="active">DASHBOARD</a>
+  </div>
+  <div class="nav-right">
+    <span class="mode-tag {{ config.trading_mode }}">{{ config.trading_mode | upper }}</span>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</nav>
+<div class="ctrl-bar">
+  <button class="btn btn-start" id="btnStart" onclick="agentStart()">&#9654; START AGENT</button>
+  <button class="btn btn-stop"  id="btnStop"  onclick="agentStop()" disabled>&#9646; STOP</button>
+  <button class="btn btn-scan"  id="btnScan"  onclick="manualScan()">&#8635; SCAN NOW</button>
+  <button class="btn btn-sq"    onclick="squareOff()">&#10005; SQUARE OFF ALL</button>
+  <button class="btn btn-kill"  onclick="killSwitch()">&#9760; KILL SWITCH</button>
+  <div style="flex:1"></div>
+  <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3)" id="cycleInfo">Cycle: 0</div>
+</div>
+<div class="toast" id="toast"><span id="toastIcon">◈</span><span id="toastMsg"></span></div>
+<div class="main">
+  <div class="left-pane">
+    <div class="pnl-strip">
+      <div class="pnl-cell"><div class="pnl-label">Today P&L</div><div class="pnl-value" id="pnlToday">₹0</div><div class="pnl-sub" id="pnlTodayPct">0.00%</div></div>
+      <div class="pnl-cell"><div class="pnl-label">Trades Today</div><div class="pnl-value" id="pnlTrades">0</div><div class="pnl-sub" id="pnlWinRate">W/L: 0/0</div></div>
+      <div class="pnl-cell"><div class="pnl-label">Open Positions</div><div class="pnl-value" id="pnlOpen">0</div><div class="pnl-sub" id="pnlOpenSyms">—</div></div>
+      <div class="pnl-cell"><div class="pnl-label">Daily Limit Used</div><div class="pnl-value" id="pnlLimitUsed">0%</div><div class="pnl-sub" id="pnlLimitAmt">Limit: ₹0</div></div>
+      <div class="pnl-cell"><div class="pnl-label">Kill Switch</div><div class="pnl-value" id="pnlKillStatus" style="font-size:13px">INACTIVE</div><div class="pnl-sub" id="pnlCapital">Cap: ₹0</div></div>
+    </div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="showTab('candidates',this)">SCANNER</div>
+      <div class="tab" onclick="showTab('selections',this)">AI PICKS</div>
+      <div class="tab" onclick="showTab('trades',this)">TRADES</div>
+      <div class="tab" onclick="showTab('log',this)">AGENT LOG</div>
+    </div>
+    <div class="tab-content">
+      <div class="tab-panel active" id="tab-candidates">
+        <div id="scanMeta" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:8px"></div>
+        <table class="data-table"><thead><tr><th>Symbol</th><th>LTP</th><th>Gap%</th><th>RVOL</th><th>ATR</th><th>VWAP</th><th>RSI</th><th>Trend</th></tr></thead>
+        <tbody id="candidatesTbody"><tr><td colspan="8" class="empty">No scan data yet. Start the agent or click SCAN NOW.</td></tr></tbody></table>
+      </div>
+      <div class="tab-panel" id="tab-selections">
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px">
+          <span style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text3)">MARKET BIAS:</span>
+          <span class="bias-badge bias-NEUTRAL" id="marketBias">NEUTRAL</span>
+          <span id="analystNote" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--text2)"></span>
+        </div>
+        <div class="selection-grid" id="selectionGrid">
+          <div class="empty">Waiting for Claude AI evaluation...<br>Start the agent to see AI stock picks.</div>
+        </div>
+      </div>
+      <div class="tab-panel" id="tab-trades">
+        <table class="data-table"><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Entry</th><th>SL</th><th>Target</th><th>Strategy</th><th>P&L</th><th>Status</th></tr></thead>
+        <tbody id="tradesTbody"><tr><td colspan="10" class="empty">No trades yet.</td></tr></tbody></table>
+      </div>
+      <div class="tab-panel" id="tab-log">
+        <div class="log-wrap" id="logWrap"><div class="log-inner" id="logInner">
+          <div class="log-line log-INFO"><span class="log-time">--:--:--</span><span>System ready. Start the agent to begin.</span></div>
+        </div></div>
+      </div>
+    </div>
+  </div>
+  <div class="right-pane">
+    <div class="rpane-section">
+      <div class="rpane-title">Risk Monitor <span id="killTag"></span></div>
+      <div class="risk-bar-wrap">
+        <div class="risk-bar-label"><span>Daily Loss Used</span><span id="riskBarPct">0%</span></div>
+        <div class="risk-bar-bg"><div class="risk-bar-fill safe" id="riskBarFill" style="width:0%"></div></div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="metric-row"><span class="metric-key">Daily P&L</span><span class="metric-val" id="rm-pnl">₹0</span></div>
+        <div class="metric-row"><span class="metric-key">Max Loss/Trade</span><span class="metric-val">{{ (config.max_loss_per_trade_pct or 1)|round(1) }}%</span></div>
+        <div class="metric-row"><span class="metric-key">Daily Limit</span><span class="metric-val">{{ (config.daily_loss_limit_pct or 3)|round(1) }}%</span></div>
+        <div class="metric-row"><span class="metric-key">Capital/Trade</span><span class="metric-val">₹{{ "{:,.0f}".format(config.max_capital_per_trade or 10000) }}</span></div>
+        <div class="metric-row"><span class="metric-key">Win Rate</span><span class="metric-val g" id="rm-wr">0%</span></div>
+        <div class="metric-row"><span class="metric-key">Conviction Min</span><span class="metric-val">{{ config.conviction_threshold or 7 }}/10</span></div>
+      </div>
+      <button class="btn btn-kill" style="width:100%;justify-content:center;margin-top:10px;font-size:9px" onclick="killSwitch()">&#9760; EMERGENCY KILL SWITCH</button>
+    </div>
+    <div class="rpane-section" style="flex:1">
+      <div class="rpane-title">Open Positions <span id="posCount">0</span></div>
+      <div id="openPositionsPanel"><div class="empty" style="padding:20px 0">No open positions.</div></div>
+    </div>
+  </div>
+</div>
+<script>
+const socket = io();
+let agentRunning = false, logLines = [], toastTimer;
+const MAX_LOG = 300;
+socket.on('connect', () => showToast('Connected to agent', 'info'));
+socket.on('disconnect', () => showToast('Disconnected', 'error'));
+socket.on('agent_status', d => updateAgentStatus(d));
+socket.on('scan_update', d => updateScanResults(d));
+socket.on('selection_update', d => updateSelections(d));
+socket.on('risk_update', d => updateRisk(d));
+socket.on('trade_placed', d => { addLog('TRADE', d.order_result?.message || 'Order placed'); loadTrades(); });
+socket.on('agent_log', d => addLog(d.level, d.message, d.time));
+socket.on('full_state', d => applyFullState(d));
+socket.emit('request_state');
+function updateClock(){const n=new Date();document.getElementById('clock').textContent=n.toLocaleTimeString('en-IN',{hour12:false,timeZone:'Asia/Kolkata'})+' IST'}
+setInterval(updateClock,1000);updateClock();
+function showTab(id,el){document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById('tab-'+id).classList.add('active');el.classList.add('active');if(id==='trades')loadTrades()}
+function updateAgentStatus(d){agentRunning=d.status==='RUNNING';const p=document.getElementById('agentPill');p.className='agent-status-pill '+(agentRunning?'running':'stopped');document.getElementById('agentPillText').textContent=agentRunning?'RUNNING':'OFFLINE';document.getElementById('btnStart').disabled=agentRunning;document.getElementById('btnStop').disabled=!agentRunning}
+function updateScanResults(d){const meta=d.meta||{};document.getElementById('scanMeta').textContent=`Scanned: ${meta.total_scanned||0}  |  Passed: ${meta.passed_filter||0}  |  ${meta.scan_time||''}`;const tb=document.getElementById('candidatesTbody');if(!d.candidates||!d.candidates.length){tb.innerHTML='<tr><td colspan="8" class="empty">No candidates this cycle.</td></tr>';return}tb.innerHTML=d.candidates.map(c=>{const gc=c.gap_pct>0?'pos':'neg';const tt={uptrend:'up',downtrend:'down',ranging:'range',volatile:'vol'}[c.trend]||'range';return`<tr><td class="sym-cell">${c.symbol}</td><td>₹${c.ltp}</td><td class="${gc}">${c.gap_pct>0?'+':''}${c.gap_pct}%</td><td class="${c.rvol>=2?'pos':'muted'}">${c.rvol}x</td><td>₹${c.atr}</td><td class="muted">₹${c.vwap||'—'}</td><td class="${c.rsi>70?'neg':c.rsi<30?'pos':'muted'}">${c.rsi||'—'}</td><td><span class="tag ${tt}">${c.trend}</span></td></tr>`}).join('')}
+function updateSelections(d){const b=d.market_bias||'NEUTRAL';document.getElementById('marketBias').className='bias-badge bias-'+b;document.getElementById('marketBias').textContent=b;document.getElementById('analystNote').textContent=d.analyst_note||'';const grid=document.getElementById('selectionGrid');if(!d.selections||!d.selections.length){grid.innerHTML='<div class="empty">No selections this cycle.</div>';return}grid.innerHTML=d.selections.map(s=>{const dir=(s.direction||'LONG').toLowerCase();const cc=s.conviction_score>=8?'high':'mid';const lv=s.key_levels||{};return`<div class="sel-card ${dir}"><div class="sel-header"><div class="sel-sym">${s.symbol}</div><div class="sel-conv ${cc}">${s.conviction_score}/10</div></div><div class="sel-dir" style="color:${dir==='long'?'var(--green)':'var(--red)'}">${s.direction} #${s.rank}</div><div class="sel-reason">${s.primary_reason}</div><div class="sel-levels"><div class="level-box"><div class="lbl">Support</div><div class="val muted">₹${lv.support||'—'}</div></div><div class="level-box"><div class="lbl">VWAP</div><div class="val muted">₹${lv.vwap||'—'}</div></div><div class="level-box"><div class="lbl">Resist</div><div class="val muted">₹${lv.resistance||'—'}</div></div></div>${s.strategy_name?`<div class="strat-badge">Strategy: ${s.strategy_name}</div>`:''}</div>`}).join('')}
+function updateRisk(d){const pnl=d.daily_pnl||0;const pe=document.getElementById('pnlToday');pe.textContent='₹'+(pnl>=0?'+':'')+pnl.toLocaleString('en-IN',{maximumFractionDigits:0});pe.className='pnl-value '+(pnl>=0?'pos':'neg');document.getElementById('pnlTodayPct').textContent=(d.daily_pnl_pct>=0?'+':'')+d.daily_pnl_pct+'%';document.getElementById('pnlTrades').textContent=d.daily_trades||0;document.getElementById('pnlWinRate').textContent='W/L: '+(d.wins||0)+'/'+(d.losses||0);document.getElementById('pnlOpen').textContent=d.open_positions||0;document.getElementById('pnlOpenSyms').textContent=(d.open_symbols||[]).join(', ')||'—';document.getElementById('pnlLimitUsed').textContent=(d.loss_limit_used_pct||0)+'%';document.getElementById('pnlLimitAmt').textContent='Limit: ₹'+((d.daily_loss_limit||0).toLocaleString('en-IN',{maximumFractionDigits:0}));document.getElementById('pnlCapital').textContent='Cap: ₹'+((d.total_capital||0).toLocaleString('en-IN',{maximumFractionDigits:0}));const kn=d.kill_switch_on;const ke=document.getElementById('pnlKillStatus');ke.textContent=kn?'ACTIVE':'INACTIVE';ke.style.color=kn?'var(--red)':'var(--text2)';document.getElementById('killTag').textContent=kn?'ACTIVE':'';const pct=Math.min(d.loss_limit_used_pct||0,100);const fill=document.getElementById('riskBarFill');fill.style.width=pct+'%';fill.className='risk-bar-fill '+(pct<50?'safe':pct<80?'warn':'danger');document.getElementById('riskBarPct').textContent=pct+'%';const rp=document.getElementById('rm-pnl');rp.textContent='₹'+(pnl>=0?'+':'')+pnl.toLocaleString('en-IN',{maximumFractionDigits:0});rp.className='metric-val '+(pnl>=0?'g':'r');document.getElementById('rm-wr').textContent=d.win_rate+'%';document.getElementById('posCount').textContent=d.open_positions||0}
+async function loadTrades(){const r=await fetch('/api/trades');const data=await r.json();const trades=(data.trades||[]).reverse();const tb=document.getElementById('tradesTbody');if(!trades.length){tb.innerHTML='<tr><td colspan="10" class="empty">No trades yet.</td></tr>';return}tb.innerHTML=trades.map(t=>{const pnl=t.pnl;const ps=pnl!=null?`<span class="${pnl>=0?'pos':'neg'}">₹${pnl>=0?'+':''}${pnl.toFixed(0)}</span>`:'—';const tm=t.entry_time?t.entry_time.substr(11,8):'—';return`<tr><td class="muted">${tm}</td><td class="sym-cell">${t.symbol}</td><td><span class="tag ${t.side==='BUY'?'up':'down'}">${t.side}</span></td><td class="muted">${t.quantity}</td><td>₹${t.entry_price}</td><td class="neg">₹${t.stop_loss}</td><td class="pos">₹${t.target_1}</td><td class="muted" style="font-size:9px">${(t.strategy||'').substring(0,18)}</td><td>${ps}</td><td><span class="tag range" style="font-size:9px">${t.status}</span></td></tr>`}).join('')}
+function addLog(level,msg,time){const el=document.createElement('div');el.className='log-line log-'+level;el.innerHTML=`<span class="log-time">${time||new Date().toLocaleTimeString('en-IN',{hour12:false,timeZone:'Asia/Kolkata'})}</span><span>${msg}</span>`;const inner=document.getElementById('logInner');inner.appendChild(el);logLines.push(el);if(logLines.length>MAX_LOG)logLines.shift().remove();const wrap=document.getElementById('logWrap');wrap.scrollTop=wrap.scrollHeight}
+function applyFullState(d){updateAgentStatus({status:d.running?'RUNNING':'STOPPED'});document.getElementById('cycleInfo').textContent='Cycle: '+(d.cycle_count||0);if(d.risk_summary)updateRisk(d.risk_summary);if(d.candidates&&d.candidates.length)updateScanResults({candidates:d.candidates,meta:{}});if(d.selections&&d.selections.length)updateSelections({selections:d.selections,market_bias:'NEUTRAL',analyst_note:''})}
+async function agentStart(){document.getElementById('btnStart').disabled=true;const r=await fetch('/api/agent/start',{method:'POST'});const d=await r.json();showToast(d.message,d.success?'success':'error');if(!d.success)document.getElementById('btnStart').disabled=false}
+async function agentStop(){const r=await fetch('/api/agent/stop',{method:'POST'});const d=await r.json();showToast(d.message,'warn')}
+async function manualScan(){const btn=document.getElementById('btnScan');btn.disabled=true;btn.textContent='Scanning...';showToast('Running market scan...','info');try{const r=await fetch('/api/scan/run',{method:'POST'});const d=await r.json();updateScanResults({candidates:d.candidates||[],meta:d.scan_meta||{}});showToast('Scan done: '+(d.candidates?.length||0)+' candidates','success')}catch(e){showToast('Scan failed: '+e.message,'error')}btn.disabled=false;btn.textContent='SCAN NOW'}
+async function killSwitch(){if(!confirm('Activate KILL SWITCH?\n\nThis will stop the agent and halt all trading for today.'))return;const r=await fetch('/api/agent/kill-switch',{method:'POST'});const d=await r.json();showToast(d.message,'error')}
+async function squareOff(){if(!confirm('SQUARE OFF ALL positions at market price?'))return;const r=await fetch('/api/agent/square-off',{method:'POST'});const d=await r.json();showToast(d.message||(d.success?'All closed':'Error'),d.success?'success':'error')}
+function showToast(msg,type='info'){const icons={success:'✓',error:'✗',info:'◈',warn:'⚠'};const t=document.getElementById('toast');document.getElementById('toastIcon').textContent=icons[type]||'◈';document.getElementById('toastMsg').textContent=msg;t.className='toast '+type+' show';clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),4000)}
+fetch('/api/risk/summary').then(r=>r.json()).then(d=>updateRisk(d));
+loadTrades();
+</script>
+</body>
+</html>

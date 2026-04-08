@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Agent Memory — Trading Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#060a0e;--bg2:#0a0f15;--bg3:#0e161f;--border:#1a2a38;--border2:#223040;--accent:#00d4ff;--green:#00ff88;--red:#ff4466;--amber:#ffb340;--purple:#b794f4;--text:#c9d8e8;--text2:#7a9bb5;--text3:#3d5a72}
+html{font-size:13px}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:48px 48px;opacity:.12;pointer-events:none;z-index:0}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+nav{position:sticky;top:0;z-index:200;background:rgba(6,10,14,.96);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);height:52px;padding:0 24px;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);letter-spacing:2px}
+.nav-links{display:flex;gap:4px}
+.nav-links a{color:var(--text2);text-decoration:none;font-size:11px;font-weight:600;letter-spacing:.8px;padding:5px 12px;border-radius:4px;transition:all .2s}
+.nav-links a:hover,.nav-links a.active{color:var(--accent);background:rgba(0,212,255,.07)}
+.wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:32px 24px 80px}
+.page-header{margin-bottom:32px}
+.page-header h1{font-size:30px;font-weight:800;color:#fff}
+.page-header h1 span{color:var(--accent)}
+.page-header p{font-family:'Space Mono',monospace;font-size:10px;color:var(--text3);margin-top:6px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
+.section-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2.5px;color:var(--text3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.section{margin-bottom:28px}
+.card{background:#0b1520;border:1px solid var(--border);border-radius:8px;padding:18px 20px}
+.data-table{width:100%;border-collapse:collapse}
+.data-table th{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;padding:7px 10px;border-bottom:1px solid var(--border);text-align:left}
+.data-table td{padding:8px 10px;border-bottom:1px solid rgba(26,42,56,.4);font-family:'Space Mono',monospace;font-size:10px;vertical-align:middle}
+.data-table tr:hover td{background:rgba(0,212,255,.02)}
+.pos{color:var(--green)}.neg{color:var(--red)}.muted{color:var(--text2)}
+.tag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:9px}
+.tag.bull{background:rgba(0,255,136,.1);color:var(--green);border:1px solid rgba(0,255,136,.2)}
+.tag.bear{background:rgba(255,68,102,.1);color:var(--red);border:1px solid rgba(255,68,102,.2)}
+.tag.neut{background:rgba(255,180,64,.1);color:var(--amber);border:1px solid rgba(255,180,64,.2)}
+.tag.strat{background:rgba(183,148,244,.1);color:var(--purple);border:1px solid rgba(183,148,244,.2)}
+.tag.timing{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)}
+.lesson-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:8px}
+.lesson-meta{font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:5px}
+.lesson-text{font-size:11px;color:var(--text2);line-height:1.5}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px}
+.stat-name{font-size:11px;font-weight:700;color:#fff;margin-bottom:8px}
+.stat-bar-wrap{margin-bottom:6px}
+.stat-bar-bg{background:var(--bg);height:4px;border-radius:2px;overflow:hidden}
+.stat-bar-fill{height:100%;border-radius:2px;background:var(--green);transition:width .5s}
+.stat-row{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px}
+.add-lesson-form{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.add-lesson-form input,.add-lesson-form select{background:var(--bg3);border:1px solid var(--border);border-radius:5px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;padding:7px 12px;outline:none}
+.add-lesson-form input{flex:1;min-width:200px}
+.add-lesson-form input:focus,.add-lesson-form select:focus{border-color:var(--accent)}
+.btn-add{padding:7px 18px;background:rgba(0,212,255,.1);border:1px solid rgba(0,212,255,.3);border-radius:5px;color:var(--accent);font-family:'Space Mono',monospace;font-size:10px;font-weight:700;cursor:pointer;transition:all .2s}
+.btn-add:hover{background:rgba(0,212,255,.2)}
+.memory-btn{padding:6px 14px;background:rgba(183,148,244,.1);border:1px solid rgba(183,148,244,.25);border-radius:5px;color:var(--purple);font-family:'Space Mono',monospace;font-size:9px;font-weight:700;cursor:pointer;transition:all .2s;text-decoration:none;display:inline-block}
+.memory-btn:hover{background:rgba(183,148,244,.2)}
+.empty{text-align:center;padding:30px;color:var(--text3);font-family:'Space Mono',monospace;font-size:10px;line-height:1.8}
+</style>
+</head>
+<body>
+<nav>
+  <div class="nav-logo">TRADE_AGENT // MEMORY</div>
+  <div class="nav-links">
+    <a href="/settings">SETTINGS</a>
+    <a href="/dashboard">DASHBOARD</a>
+    <a href="/memory" class="active">MEMORY</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="page-header">
+    <h1>Agent <span>Memory</span></h1>
+    <p>// PERSISTENT LEARNING — SESSIONS · STRATEGIES · LESSONS · OSINT HISTORY</p>
+  </div>
+
+  <!-- SESSIONS -->
+  <div class="section">
+    <div class="section-label">Recent Trading Sessions</div>
+    <div class="card">
+      {% if sessions %}
+      <table class="data-table">
+        <thead><tr>
+          <th>Date</th><th>P&L</th><th>P&L%</th><th>Trades</th><th>W/L</th><th>Win Rate</th><th>Market Bias</th><th>Notes</th>
+        </tr></thead>
+        <tbody>
+        {% for s in sessions %}
+        <tr>
+          <td class="muted">{{ s.date }}</td>
+          <td class="{{ 'pos' if s.daily_pnl >= 0 else 'neg' }}">₹{{ '{:+,.0f}'.format(s.daily_pnl) }}</td>
+          <td class="{{ 'pos' if s.daily_pnl_pct >= 0 else 'neg' }}">{{ '{:+.1f}'.format(s.daily_pnl_pct) }}%</td>
+          <td class="muted">{{ s.total_trades }}</td>
+          <td class="muted">{{ s.wins }}/{{ s.losses }}</td>
+          <td class="{{ 'pos' if s.win_rate >= 50 else 'neg' }}">{{ s.win_rate }}%</td>
+          <td>
+            <span class="tag {{ 'bull' if s.market_bias == 'BULLISH' else 'bear' if s.market_bias == 'BEARISH' else 'neut' }}">
+              {{ s.market_bias }}
+            </span>
+          </td>
+          <td class="muted" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.notes }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">No sessions recorded yet.<br>Start the agent and complete some trades.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <!-- STRATEGY STATS -->
+    <div class="section">
+      <div class="section-label">Strategy Performance</div>
+      <div class="card" style="max-height:400px;overflow-y:auto">
+        {% if strategy_stats %}
+          {% for strat, stats in strategy_stats.items() | sort(attribute='1.total_pnl', reverse=True) %}
+          <div class="stat-card" style="margin-bottom:8px">
+            <div class="stat-name">{{ strat[:40] }}</div>
+            <div class="stat-bar-wrap">
+              <div style="display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:9px;color:var(--text3);margin-bottom:3px">
+                <span>Win Rate</span><span class="{{ 'pos' if stats.win_rate >= 50 else 'neg' }}">{{ '{:.0f}'.format(stats.win_rate) }}%</span>
+              </div>
+              <div class="stat-bar-bg">
+                <div class="stat-bar-fill" style="width:{{ stats.win_rate }}%;background:{{ 'var(--green)' if stats.win_rate >= 50 else 'var(--red)' }}"></div>
+              </div>
+            </div>
+            <div class="stat-row">
+              <span>{{ stats.trades }} trades</span>
+              <span>Avg: <span class="{{ 'pos' if stats.avg_pnl >= 0 else 'neg' }}">₹{{ '{:+.0f}'.format(stats.avg_pnl) }}</span></span>
+              <span>Total: <span class="{{ 'pos' if stats.total_pnl >= 0 else 'neg' }}">₹{{ '{:+,.0f}'.format(stats.total_pnl) }}</span></span>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+        <div class="empty">No strategy data yet.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- LESSONS LEARNED -->
+    <div class="section">
+      <div class="section-label">Lessons Learned</div>
+      <div class="card">
+        {% if lessons %}
+          {% for lesson in lessons | reverse %}
+          <div class="lesson-card">
+            <div class="lesson-meta">
+              {{ lesson.date }} &nbsp;
+              <span class="tag {{ 'strat' if lesson.category == 'strategy' else 'timing' if lesson.category == 'timing' else 'neut' }}">
+                {{ lesson.category | upper }}
+              </span>
+            </div>
+            <div class="lesson-text">{{ lesson.lesson }}</div>
+          </div>
+          {% endfor %}
+        {% else %}
+        <div class="empty">No lessons yet.<br>Agent learns automatically after 5+ trades.</div>
+        {% endif %}
+
+        <!-- Add manual lesson -->
+        <div class="add-lesson-form">
+          <input type="text" id="newLesson" placeholder="Add manual lesson...">
+          <select id="lessonCat">
+            <option value="manual">manual</option>
+            <option value="strategy">strategy</option>
+            <option value="timing">timing</option>
+            <option value="risk">risk</option>
+            <option value="market">market</option>
+          </select>
+          <button class="btn-add" onclick="addLesson()">+ ADD</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MEMORY FILE ACTIONS -->
+  <div class="section">
+    <div class="section-label">Memory File</div>
+    <div class="card" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text2)">
+        Memory stored at: <span style="color:var(--accent)">data/memory/agent_memory.json</span><br>
+        Human-readable: <span style="color:var(--accent)">data/memory/Memory.md</span>
+      </div>
+      <div style="flex:1"></div>
+      <button class="memory-btn" onclick="refreshMemory()">↺ Refresh</button>
+      <button class="memory-btn" onclick="triggerLearn()">🧠 Learn Now</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+async function addLesson() {
+  const lesson = document.getElementById('newLesson').value.trim();
+  const cat    = document.getElementById('lessonCat').value;
+  if (!lesson) return;
+  await fetch('/api/memory/add-lesson', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({lesson, category: cat})
+  });
+  location.reload();
+}
+
+async function refreshMemory() {
+  location.reload();
+}
+
+async function triggerLearn() {
+  const r = await fetch('/api/memory/stats');
+  const d = await r.json();
+  alert(`Memory refreshed!\nSessions: ${d.sessions?.length || 0}\nLessons: ${d.lessons?.length || 0}`);
+}
+</script>
+</body>
+</html>
