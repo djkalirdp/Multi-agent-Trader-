@@ -1,0 +1,23 @@
+{
+  "dhan_client_id": "Gshs",
+  "dhan_access_token": "vsywbw",
+  "claude_api_key": "gwyeve",
+  "claude_model": "claude-opus-4-5",
+  "trading_mode": "paper",
+  "trading_style": "swing_intraday",
+  "max_loss_per_trade_pct": 1.5,
+  "daily_loss_limit_pct": 4.5,
+  "max_capital_per_trade": 10000.0,
+  "total_capital": 2000.0,
+  "max_open_positions": 3,
+  "rvol_threshold": 1.5,
+  "min_gap_pct": 2.0,
+  "min_atr": 5.0,
+  "min_market_cap": 500.0,
+  "autonomous_mode": true,
+  "scan_interval_min": 5,
+  "conviction_threshold": 10,
+  "enable_notifications": false,
+  "notification_email": "",
+  "is_configured": true
+}
