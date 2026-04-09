@@ -1,15 +1,20 @@
 """
-Intraday Trading Agent — Flask Application (Complete)
-All routes: Settings, Dashboard, Agent Control, P&L API
+Intraday Trading Agent — Flask Application v4
+Fixed bugs:
+  - Routes were defined after __main__ block (not registered at runtime)
+  - save_settings missing multi-AI + OSINT config fields
+  - Added /health endpoint for monitoring
+  - Added /api/agent/reset-black-swan route
 """
 
 import os
+import json as _json
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit
 
 from modules.config_manager import ConfigManager
 from modules.agent_brain    import AgentBrain
-from modules.risk_manager   import RiskManager
+from modules.risk_manager   import RiskManager, TRADES_PATH
 
 app        = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -19,7 +24,10 @@ config_mgr = ConfigManager()
 agent      = AgentBrain(socketio=socketio)
 
 
-# PAGE ROUTES
+# ═══════════════════════════════════════════════════════════════
+#  PAGE ROUTES
+# ═══════════════════════════════════════════════════════════════
+
 @app.route('/')
 def index():
     cfg = config_mgr.load()
@@ -36,72 +44,125 @@ def dashboard():
         return redirect(url_for('settings'))
     return render_template('dashboard.html', config=cfg)
 
+@app.route('/memory')
+def memory_page():
+    from modules.memory_manager import MemoryManager
+    mem = MemoryManager()
+    return render_template('memory.html',
+        sessions=mem.get_sessions(30),
+        lessons=mem.get_lessons(),
+        strategy_stats=mem.get_strategy_stats(),
+        config=config_mgr.load()
+    )
 
-# SETTINGS API
+@app.route('/health')
+def health():
+    return jsonify({'status': 'ok', 'agent_running': agent.is_running()})
+
+
+# ═══════════════════════════════════════════════════════════════
+#  SETTINGS API
+# ═══════════════════════════════════════════════════════════════
+
 @app.route('/api/settings/save', methods=['POST'])
 def save_settings():
     try:
         data = request.get_json()
         required = ['dhan_client_id', 'dhan_access_token', 'claude_api_key']
-        missing  = [f for f in required if not data.get(f,'').strip()]
+        missing  = [f for f in required if not data.get(f, '').strip()]
         if missing:
-            return jsonify({'success': False, 'message': f'Missing: {", ".join(missing)}'}), 400
+            return jsonify({'success': False, 'message': f'Missing required fields: {", ".join(missing)}'}), 400
+
         config = {
-            'dhan_client_id': data.get('dhan_client_id','').strip(),
-            'dhan_access_token': data.get('dhan_access_token','').strip(),
-            'claude_api_key': data.get('claude_api_key','').strip(),
-            'claude_model': data.get('claude_model','claude-opus-4-5'),
-            'trading_mode': data.get('trading_mode','paper'),
-            'trading_style': data.get('trading_style','swing_intraday'),
-            'max_loss_per_trade_pct': float(data.get('max_loss_per_trade_pct',1.0)),
-            'daily_loss_limit_pct': float(data.get('daily_loss_limit_pct',3.0)),
-            'max_capital_per_trade': float(data.get('max_capital_per_trade',10000)),
-            'total_capital': float(data.get('total_capital',100000)),
-            'max_open_positions': int(data.get('max_open_positions',3)),
-            'rvol_threshold': float(data.get('rvol_threshold',1.5)),
-            'min_gap_pct': float(data.get('min_gap_pct',2.0)),
-            'min_atr': float(data.get('min_atr',5.0)),
-            'min_market_cap': float(data.get('min_market_cap',500)),
-            'autonomous_mode': data.get('autonomous_mode',True),
-            'scan_interval_min': int(data.get('scan_interval_min',5)),
-            'conviction_threshold': int(data.get('conviction_threshold',7)),
-            'enable_notifications': data.get('enable_notifications',False),
-            'notification_email': data.get('notification_email',''),
-            'is_configured': True,
+            # DhanHQ
+            'dhan_client_id':          data.get('dhan_client_id', '').strip(),
+            'dhan_access_token':       data.get('dhan_access_token', '').strip(),
+            # Claude
+            'claude_api_key':          data.get('claude_api_key', '').strip(),
+            'claude_model':            data.get('claude_model', 'claude-opus-4-5'),
+            # Gemini
+            'gemini_api_key':          data.get('gemini_api_key', '').strip(),
+            'gemini_model':            data.get('gemini_model', 'gemini-1.5-pro'),
+            # Ollama
+            'ollama_enabled':          bool(data.get('ollama_enabled', False)),
+            'ollama_base_url':         data.get('ollama_base_url', 'http://localhost:11434').strip(),
+            'ollama_model':            data.get('ollama_model', 'llama3').strip(),
+            # Multi-AI routing
+            'researcher_model':        data.get('researcher_model', 'gemini'),
+            'decision_model':          data.get('decision_model', 'claude'),
+            # OSINT
+            'newsapi_key':             data.get('newsapi_key', '').strip(),
+            'alphavantage_key':        data.get('alphavantage_key', '').strip(),
+            'telegram_api_id':         data.get('telegram_api_id', '').strip(),
+            'telegram_api_hash':       data.get('telegram_api_hash', '').strip(),
+            # Trading
+            'trading_mode':            data.get('trading_mode', 'paper'),
+            'trading_style':           data.get('trading_style', 'swing_intraday'),
+            # Risk
+            'max_loss_per_trade_pct':  float(data.get('max_loss_per_trade_pct', 1.0)),
+            'daily_loss_limit_pct':    float(data.get('daily_loss_limit_pct', 3.0)),
+            'max_capital_per_trade':   float(data.get('max_capital_per_trade', 10000)),
+            'total_capital':           float(data.get('total_capital', 100000)),
+            'max_open_positions':      int(data.get('max_open_positions', 3)),
+            'max_positions_per_sector':int(data.get('max_positions_per_sector', 1)),
+            # Scanner
+            'rvol_threshold':          float(data.get('rvol_threshold', 1.5)),
+            'min_gap_pct':             float(data.get('min_gap_pct', 2.0)),
+            'min_atr':                 float(data.get('min_atr', 5.0)),
+            'min_market_cap':          float(data.get('min_market_cap', 500)),
+            # Agent
+            'autonomous_mode':         bool(data.get('autonomous_mode', True)),
+            'scan_interval_min':       int(data.get('scan_interval_min', 5)),
+            'conviction_threshold':    int(data.get('conviction_threshold', 7)),
+            # Notifications
+            'enable_notifications':    bool(data.get('enable_notifications', False)),
+            'notification_email':      data.get('notification_email', '').strip(),
+            'is_configured':           True,
         }
         config_mgr.save(config)
-        return jsonify({'success': True, 'message': 'Settings saved!'})
+        return jsonify({'success': True, 'message': 'Settings saved successfully!'})
+    except (ValueError, TypeError) as e:
+        return jsonify({'success': False, 'message': f'Invalid value: {str(e)}'}), 400
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/settings/load', methods=['GET'])
 def load_settings():
-    cfg = config_mgr.load()
+    cfg  = config_mgr.load()
     safe = cfg.copy()
-    for f in ['dhan_access_token','claude_api_key']:
-        v = safe.get(f,'')
-        if v: safe[f] = v[:4]+'........'+v[-4:] if len(v)>8 else '........'
+    for field in ['dhan_access_token', 'claude_api_key', 'gemini_api_key',
+                  'newsapi_key', 'alphavantage_key']:
+        v = safe.get(field, '')
+        if v:
+            safe[field] = v[:4] + '••••••••' + v[-4:] if len(v) > 8 else '••••••••'
     return jsonify({'success': True, 'config': safe})
 
 @app.route('/api/settings/test-dhan', methods=['POST'])
 def test_dhan():
     from modules.dhan_connector import DhanConnector
     d = request.get_json()
-    return jsonify(DhanConnector(d.get('dhan_client_id'), d.get('dhan_access_token')).test_connection())
+    return jsonify(DhanConnector(
+        d.get('dhan_client_id'), d.get('dhan_access_token')
+    ).test_connection())
 
 @app.route('/api/settings/test-claude', methods=['POST'])
 def test_claude():
     from modules.claude_connector import ClaudeConnector
     d = request.get_json()
-    return jsonify(ClaudeConnector(d.get('claude_api_key'), d.get('claude_model','claude-opus-4-5')).test_connection())
+    return jsonify(ClaudeConnector(
+        d.get('claude_api_key'), d.get('claude_model', 'claude-opus-4-5')
+    ).test_connection())
 
 @app.route('/api/settings/reset', methods=['POST'])
 def reset_settings():
     config_mgr.reset()
-    return jsonify({'success': True, 'message': 'Settings reset.'})
+    return jsonify({'success': True, 'message': 'Settings reset to defaults.'})
 
 
-# AGENT CONTROL API
+# ═══════════════════════════════════════════════════════════════
+#  AGENT CONTROL API
+# ═══════════════════════════════════════════════════════════════
+
 @app.route('/api/agent/start', methods=['POST'])
 def agent_start():
     return jsonify(agent.start())
@@ -116,38 +177,61 @@ def agent_status():
 
 @app.route('/api/agent/kill-switch', methods=['POST'])
 def agent_kill_switch():
-    cfg = config_mgr.load()
+    cfg  = config_mgr.load()
     risk = RiskManager(cfg)
     agent.stop()
     risk.force_kill_switch()
-    return jsonify({'success': True, 'message': 'Kill switch activated.'})
+    return jsonify({'success': True, 'message': 'Kill switch activated. Agent stopped.'})
 
 @app.route('/api/agent/reset-kill-switch', methods=['POST'])
 def reset_kill_switch():
-    cfg = config_mgr.load()
+    cfg  = config_mgr.load()
     RiskManager(cfg).reset_kill_switch()
-    return jsonify({'success': True, 'message': 'Kill switch reset.'})
+    return jsonify({'success': True, 'message': 'Kill switch reset. Agent can be restarted.'})
 
 @app.route('/api/agent/square-off', methods=['POST'])
 def square_off():
-    cfg = config_mgr.load()
+    cfg  = config_mgr.load()
     from modules.order_executor import OrderExecutor
-    executor = OrderExecutor(cfg['dhan_client_id'], cfg['dhan_access_token'], cfg.get('trading_mode','paper'))
+    executor = OrderExecutor(
+        cfg['dhan_client_id'], cfg['dhan_access_token'],
+        cfg.get('trading_mode', 'paper')
+    )
     result = executor.square_off_all()
     agent.stop()
     return jsonify(result)
 
 
-# DATA API
+# ═══════════════════════════════════════════════════════════════
+#  DATA API
+# ═══════════════════════════════════════════════════════════════
+
 @app.route('/api/risk/summary', methods=['GET'])
 def risk_summary():
     cfg = config_mgr.load()
     return jsonify(RiskManager(cfg).get_summary())
 
+@app.route('/api/risk/black-swan/reset', methods=['POST'])
+def reset_black_swan():
+    cfg  = config_mgr.load()
+    RiskManager(cfg).reset_black_swan()
+    return jsonify({'success': True, 'message': 'Black Swan mode deactivated.'})
+
+@app.route('/api/risk/kelly-preview', methods=['POST'])
+def kelly_preview():
+    cfg    = config_mgr.load()
+    data   = request.get_json()
+    risk   = RiskManager(cfg)
+    result = risk.calculate_position_size(
+        float(data.get('entry', 0)),
+        float(data.get('stop_loss', 0)),
+        data.get('strategy', ''),
+        float(data.get('regime_multiplier', 1.0)),
+    )
+    return jsonify(result)
+
 @app.route('/api/trades', methods=['GET'])
 def get_trades():
-    from modules.risk_manager import TRADES_PATH
-    import json as _json
     if not os.path.exists(TRADES_PATH):
         return jsonify({'trades': []})
     with open(TRADES_PATH) as f:
@@ -156,34 +240,10 @@ def get_trades():
 
 @app.route('/api/scan/run', methods=['POST'])
 def manual_scan():
-    cfg = config_mgr.load()
+    cfg     = config_mgr.load()
     from modules.market_scanner import MarketScanner
     scanner = MarketScanner(cfg['dhan_client_id'], cfg['dhan_access_token'], cfg)
     return jsonify(scanner.scan())
-
-
-# WEBSOCKET
-@socketio.on('connect')
-def on_connect():
-    emit('agent_status', {'status': 'RUNNING' if agent.is_running() else 'STOPPED',
-                          'message': 'Connected to Trading Agent'})
-
-@socketio.on('disconnect')
-def on_disconnect():
-    pass
-
-@socketio.on('request_state')
-def on_request_state():
-    emit('full_state', agent.get_state())
-
-
-if __name__ == '__main__':
-    print("\n" + "="*60)
-    print("  Intraday Trading Agent - Full System")
-    print("  Dashboard: http://localhost:5000")
-    print("  Settings:  http://localhost:5000/settings")
-    print("="*60 + "\n")
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000, use_reloader=False)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -218,19 +278,11 @@ def get_memory_stats():
 def add_lesson():
     from modules.memory_manager import MemoryManager
     data = request.get_json()
-    MemoryManager().add_lesson(data.get('lesson',''), data.get('category','manual'))
-    return jsonify({'success': True})
-
-@app.route('/memory')
-def memory_page():
-    from modules.memory_manager import MemoryManager
-    mem = MemoryManager()
-    return render_template('memory.html',
-        sessions=mem.get_sessions(30),
-        lessons=mem.get_lessons(),
-        strategy_stats=mem.get_strategy_stats(),
-        config=config_mgr.load()
+    MemoryManager().add_lesson(
+        data.get('lesson', ''),
+        data.get('category', 'manual')
     )
+    return jsonify({'success': True})
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -239,33 +291,32 @@ def memory_page():
 
 @app.route('/api/osint/<symbol>', methods=['GET'])
 def get_osint(symbol):
-    cfg = config_mgr.load()
+    cfg     = config_mgr.load()
     from modules.osint_gatherer import OSINTGatherer
     gatherer = OSINTGatherer(cfg)
     return jsonify(gatherer.gather(symbol.upper()))
 
 @app.route('/api/osint/batch', methods=['POST'])
 def osint_batch():
-    cfg = config_mgr.load()
-    from modules.osint_gatherer import OSINTGatherer
+    cfg     = config_mgr.load()
     symbols = request.get_json().get('symbols', [])
-    gatherer = OSINTGatherer(cfg)
-    return jsonify(gatherer.gather_batch(symbols))
+    from modules.osint_gatherer import OSINTGatherer
+    return jsonify(OSINTGatherer(cfg).gather_batch(symbols))
 
 
 # ═══════════════════════════════════════════════════════════════
-#  MULTI-AI STATUS API
+#  MULTI-AI API
 # ═══════════════════════════════════════════════════════════════
 
 @app.route('/api/ai/models', methods=['GET'])
 def get_ai_models():
-    cfg = config_mgr.load()
+    cfg  = config_mgr.load()
     from modules.multi_ai import MultiAIOrchestrator
     orch = MultiAIOrchestrator(cfg)
     return jsonify({
         'models':           orch.get_available_models(),
-        'researcher_model': cfg.get('researcher_model','gemini'),
-        'decision_model':   cfg.get('decision_model','claude'),
+        'researcher_model': cfg.get('researcher_model', 'gemini'),
+        'decision_model':   cfg.get('decision_model', 'claude'),
     })
 
 @app.route('/api/ai/test-gemini', methods=['POST'])
@@ -273,9 +324,12 @@ def test_gemini():
     data = request.get_json()
     from modules.multi_ai import GeminiAdapter
     try:
-        g = GeminiAdapter(data.get('gemini_api_key',''), data.get('gemini_model','gemini-1.5-pro'))
-        r = g.chat("You are a test.", "Reply: GEMINI_OK", max_tokens=10)
-        return jsonify({'success': True, 'message': f'Gemini connected! Response: {r.strip()}'})
+        g = GeminiAdapter(
+            data.get('gemini_api_key', ''),
+            data.get('gemini_model', 'gemini-1.5-pro')
+        )
+        r = g.chat("You are a test assistant.", "Reply with exactly: GEMINI_OK", max_tokens=10)
+        return jsonify({'success': True, 'message': f'Gemini connected! Model: {g.model}'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
@@ -284,12 +338,99 @@ def test_ollama():
     data = request.get_json()
     from modules.multi_ai import OllamaAdapter
     try:
-        o = OllamaAdapter(data.get('ollama_base_url','http://localhost:11434'), data.get('ollama_model','llama3'))
-        available = o.is_available()
-        models    = o.list_models()
-        if available:
-            return jsonify({'success': True, 'message': f'Ollama running! Models: {", ".join(models[:5])}'})
-        else:
-            return jsonify({'success': False, 'message': 'Ollama not running. Start with: ollama serve'})
+        o = OllamaAdapter(
+            data.get('ollama_base_url', 'http://localhost:11434'),
+            data.get('ollama_model', 'llama3')
+        )
+        if o.is_available():
+            models = o.list_models()
+            return jsonify({'success': True,
+                            'message': f'Ollama running! Available: {", ".join(models[:5])}'})
+        return jsonify({'success': False,
+                        'message': 'Ollama not running. Start it with: ollama serve'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+
+
+# ═══════════════════════════════════════════════════════════════
+#  REGIME API
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/api/regime', methods=['GET'])
+def get_regime():
+    return jsonify(agent.last_regime or {'regime': 'UNKNOWN', 'confidence': 0,
+                                          'trading_allowed': True})
+
+@app.route('/api/regime/detect', methods=['POST'])
+def detect_regime():
+    cfg     = config_mgr.load()
+    from modules.regime_detector import MarketRegimeDetector
+    from modules.market_scanner  import MarketScanner
+    scanner = MarketScanner(cfg['dhan_client_id'], cfg['dhan_access_token'], cfg)
+    scan    = scanner.scan()
+    return jsonify(MarketRegimeDetector(cfg).detect(scan.get('candidates', [])))
+
+
+# ═══════════════════════════════════════════════════════════════
+#  STRATEGY JAIL API
+# ═══════════════════════════════════════════════════════════════
+
+@app.route('/api/jail', methods=['GET'])
+def get_jail():
+    cfg  = config_mgr.load()
+    risk = RiskManager(cfg)
+    return jsonify({'jailed': risk.get_jailed_strategies()})
+
+@app.route('/api/jail/release', methods=['POST'])
+def release_from_jail():
+    data     = request.get_json()
+    strategy = data.get('strategy', '')
+    if not strategy:
+        return jsonify({'success': False, 'message': 'strategy field required'}), 400
+    return jsonify(agent.release_strategy(strategy))
+
+@app.route('/api/jail/add', methods=['POST'])
+def jail_manually():
+    cfg  = config_mgr.load()
+    data = request.get_json()
+    risk = RiskManager(cfg)
+    risk.jail_strategy(
+        data.get('strategy', ''),
+        data.get('reason', 'Manually jailed by user')
+    )
+    return jsonify({'success': True, 'message': f'Strategy jailed: {data.get("strategy","")}'})
+
+
+# ═══════════════════════════════════════════════════════════════
+#  WEBSOCKET EVENTS
+# ═══════════════════════════════════════════════════════════════
+
+@socketio.on('connect')
+def on_connect():
+    emit('agent_status', {
+        'status':  'RUNNING' if agent.is_running() else 'STOPPED',
+        'message': 'Connected to Trading Agent v4'
+    })
+
+@socketio.on('disconnect')
+def on_disconnect():
+    pass
+
+@socketio.on('request_state')
+def on_request_state():
+    emit('full_state', agent.get_state())
+
+
+# ═══════════════════════════════════════════════════════════════
+#  ENTRY POINT
+# ═══════════════════════════════════════════════════════════════
+
+if __name__ == '__main__':
+    print("\n" + "=" * 60)
+    print("  🤖  Intraday Trading Agent v4")
+    print("  📊  Dashboard : http://localhost:5000/dashboard")
+    print("  ⚙️   Settings  : http://localhost:5000/settings")
+    print("  🧠  Memory    : http://localhost:5000/memory")
+    print("  ❤️   Health    : http://localhost:5000/health")
+    print("=" * 60 + "\n")
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, use_reloader=False)

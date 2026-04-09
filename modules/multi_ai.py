@@ -262,11 +262,40 @@ Date: {datetime.now().strftime('%Y-%m-%d')}
 Analyze each candidate. Respond ONLY in required JSON format."""
 
         try:
-            raw = researcher.chat(system, user, max_tokens=2000)
-            clean = raw.strip().lstrip('```json').lstrip('```').rstrip('```').strip()
-            return json.loads(clean)
+            raw    = researcher.chat(system, user, max_tokens=2000)
+            return self._parse_json_response(raw)
         except Exception as e:
             return {"error": str(e), "research": {}, "researcher_used": researcher.name}
+
+    def _parse_json_response(self, raw: str) -> dict:
+        """
+        Robust JSON extractor — handles markdown fences, extra text, etc.
+        Tries multiple strategies before giving up.
+        """
+        # Strategy 1: strip markdown fences
+        clean = raw.strip()
+        for fence in ['```json', '```JSON', '```']:
+            if clean.startswith(fence):
+                clean = clean[len(fence):]
+                break
+        if clean.endswith('```'):
+            clean = clean[:-3]
+        clean = clean.strip()
+        try:
+            return json.loads(clean)
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: find first { ... } block
+        import re
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        raise ValueError(f"Could not parse JSON from response (length={len(raw)})")
 
     def make_trade_decision(self, candidates: List[Dict], research: Dict,
                              memory_context: str) -> Dict:
@@ -303,12 +332,10 @@ You MUST respond ONLY in this exact JSON format:
 }}
 Select max 3 stocks. Conviction score 7+ to trade. Be disciplined."""
 
-        # Merge candidates with research
         enriched = []
         for c in candidates:
-            sym      = c.get('symbol', '')
-            research_for_sym = research.get('research', {}).get(sym, {})
-            enriched.append({**c, 'research': research_for_sym})
+            sym = c.get('symbol', '')
+            enriched.append({**c, 'research': research.get('research', {}).get(sym, {})})
 
         user = f"""Make final trade decisions:
 
@@ -326,11 +353,12 @@ Time: {datetime.now().strftime('%H:%M')} IST
 Apply your 20-strategy knowledge and memory context. Respond ONLY in required JSON format."""
 
         try:
-            raw = decision_maker.chat(system, user, max_tokens=2500)
-            clean = raw.strip().lstrip('```json').lstrip('```').rstrip('```').strip()
-            result = json.loads(clean)
+            raw    = decision_maker.chat(system, user, max_tokens=2500)
+            result = self._parse_json_response(raw)
             result['decision_model_used'] = decision_maker.name
-            result['research_model_used'] = self.get_researcher().name if self.get_researcher() else 'none'
+            result['research_model_used'] = (
+                self.get_researcher().name if self.get_researcher() else 'none'
+            )
             return result
         except Exception as e:
             return {

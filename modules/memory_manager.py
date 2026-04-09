@@ -169,23 +169,20 @@ class MemoryManager:
         return self._mem
 
     def auto_learn_from_trades(self):
-        """
-        Automatically generate lessons from trade patterns.
-        Called at end of each session.
-        """
+        """Automatically generate lessons from trade patterns."""
         trades = self._mem.get('trades', [])
         if len(trades) < 5:
             return
 
         recent = trades[-20:]
-        losses = [t for t in recent if (t.get('pnl') or 0) < 0]
         wins   = [t for t in recent if (t.get('pnl') or 0) > 0]
 
         # Pattern: Losing strategies
         strat_stats = self._mem.get('strategy_stats', {})
         for strat, stats in strat_stats.items():
             if stats.get('trades', 0) >= 3 and stats.get('win_rate', 100) < 30:
-                lesson = f"Strategy '{strat}' has only {stats['win_rate']:.0f}% win rate over {stats['trades']} trades. Avoid or reduce conviction threshold for this strategy."
+                lesson = (f"Strategy '{strat}' has only {stats['win_rate']:.0f}% win rate "
+                          f"over {stats['trades']} trades. Avoid or reduce conviction threshold.")
                 existing = [l['lesson'] for l in self._mem.get('lessons', [])]
                 if lesson not in existing:
                     self.add_lesson(lesson, 'strategy')
@@ -194,11 +191,42 @@ class MemoryManager:
         if len(wins) >= 3:
             win_times = [t.get('time', '') for t in wins if t.get('time')]
             if win_times:
-                morning = [t for t in win_times if t < '11:00']
+                morning   = [t for t in win_times if t < '11:00']
                 afternoon = [t for t in win_times if t >= '13:00']
                 if len(morning) > len(afternoon) * 2:
-                    self.add_lesson("Most wins occur in morning session (9:15-11:00). Prioritize early trades.", 'timing')
+                    self.add_lesson("Most wins occur in morning session (9:15–11:00). Prioritize early trades.", 'timing')
 
+        self._save()
+
+    def learn_from_losing_streak(self, analysis: Dict):
+        """
+        Feature 6: Store losing streak analysis as an actionable lesson.
+        Called by agent_brain when RiskManager detects 3+ consecutive losses.
+        """
+        if not analysis:
+            return
+        self._ensure_keys()
+        lesson = analysis.get('analysis_text', '')
+        if not lesson:
+            return
+
+        # Store as high-priority lesson
+        self._mem['lessons'].append({
+            'date':     date.today().isoformat(),
+            'category': 'losing_streak',
+            'lesson':   lesson,
+            'streak':   analysis.get('streak_count', 0),
+            'loss':     analysis.get('total_loss', 0),
+        })
+
+        # Also store structured streak data for dashboard
+        self._mem.setdefault('losing_streaks', []).append({
+            'date':           date.today().isoformat(),
+            'time':           datetime.now().strftime('%H:%M'),
+            **analysis,
+        })
+        # Keep last 30 streaks
+        self._mem['losing_streaks'] = self._mem['losing_streaks'][-30:]
         self._save()
 
     # ─────────────────────────────────────────────────────────

@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Settings — Trading Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ─── RESET & ROOT ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #080c10;
+  --bg2:       #0d1117;
+  --bg3:       #111820;
+  --border:    #1e2d3d;
+  --border2:   #243342;
+  --accent:    #00d4ff;
+  --accent2:   #0099cc;
+  --green:     #00ff88;
+  --red:       #ff4466;
+  --amber:     #ffb340;
+  --text:      #c9d8e8;
+  --text2:     #7a9bb5;
+  --text3:     #3d5a72;
+  --card:      #0d1520;
+  --live-glow: 0 0 20px #ff446640, 0 0 40px #ff446620;
+  --paper-glow:0 0 20px #00ff8840, 0 0 40px #00ff8820;
+}
+
+html { font-size: 14px; scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── GRID NOISE BACKGROUND ────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: .18;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── TOP NAV ───────────────────────────────────────────── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(8,12,16,.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 56px;
+}
+
+.nav-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Space Mono', monospace;
+  font-size: 13px; font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 2px;
+}
+
+.nav-logo .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,100% { opacity:1; box-shadow: 0 0 6px var(--green); }
+  50%      { opacity:.4; box-shadow: none; }
+}
+
+.nav-links { display: flex; gap: 4px; }
+.nav-links a {
+  color: var(--text2);
+  text-decoration: none;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 1px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  transition: all .2s;
+}
+.nav-links a:hover, .nav-links a.active {
+  color: var(--accent);
+  background: rgba(0,212,255,.08);
+}
+
+.nav-badge {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  background: rgba(0,212,255,.12);
+  color: var(--accent);
+  border: 1px solid rgba(0,212,255,.25);
+  padding: 3px 10px; border-radius: 20px;
+}
+
+/* ─── PAGE LAYOUT ───────────────────────────────────────── */
+.page-wrap {
+  position: relative; z-index: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 24px 100px;
+}
+
+/* ─── PAGE HEADER ───────────────────────────────────────── */
+.page-header {
+  margin-bottom: 40px;
+}
+
+.page-header h1 {
+  font-size: 36px; font-weight: 800;
+  color: #fff;
+  line-height: 1.1;
+}
+
+.page-header h1 span { color: var(--accent); }
+
+.page-header p {
+  color: var(--text2);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  margin-top: 8px;
+  letter-spacing: .5px;
+}
+
+/* ─── SECTION ───────────────────────────────────────────── */
+.section {
+  margin-bottom: 28px;
+  opacity: 0; transform: translateY(18px);
+  animation: fadeUp .5s ease forwards;
+}
+
+.section:nth-child(1) { animation-delay: .05s }
+.section:nth-child(2) { animation-delay: .12s }
+.section:nth-child(3) { animation-delay: .19s }
+.section:nth-child(4) { animation-delay: .26s }
+.section:nth-child(5) { animation-delay: .33s }
+.section:nth-child(6) { animation-delay: .40s }
+
+@keyframes fadeUp {
+  to { opacity:1; transform: translateY(0); }
+}
+
+.section-label {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 2.5px;
+  color: var(--text3);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  padding-left: 2px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ─── CARD ──────────────────────────────────────────────── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px 28px;
+  transition: border-color .25s;
+}
+.card:hover { border-color: var(--border2); }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+@media(max-width:680px){ .card-grid { grid-template-columns:1fr; } }
+
+/* ─── FORM FIELDS ───────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 7px; }
+
+.field label {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--text2);
+  text-transform: uppercase;
+  display: flex; align-items: center; gap: 6px;
+}
+
+.field label .req { color: var(--accent); }
+.field label .badge {
+  font-size: 9px; padding: 1px 7px;
+  border-radius: 10px;
+  background: rgba(255,180,64,.12);
+  color: var(--amber);
+  border: 1px solid rgba(255,180,64,.2);
+  letter-spacing: .5px;
+}
+
+.field input, .field select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  width: 100%;
+}
+.field input:focus, .field select:focus {
+  border-color: var(--accent2);
+  box-shadow: 0 0 0 3px rgba(0,153,204,.12);
+}
+.field input::placeholder { color: var(--text3); font-style: italic; }
+
+.field .hint {
+  font-size: 10px; color: var(--text3);
+  font-family: 'Space Mono', monospace;
+}
+
+.input-group {
+  display: flex; gap: 8px;
+}
+.input-group input { flex: 1; }
+.input-group .icon-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  cursor: pointer;
+  padding: 0 14px;
+  font-size: 15px;
+  transition: all .2s;
+}
+.input-group .icon-btn:hover {
+  border-color: var(--accent2);
+  color: var(--accent);
+}
+
+/* ─── TRADING MODE TOGGLE ───────────────────────────────── */
+.mode-toggle {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; margin-top: 4px;
+}
+
+.mode-card {
+  position: relative;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: all .25s;
+  overflow: hidden;
+}
+.mode-card::before {
+  content: '';
+  position: absolute; inset: 0;
+  opacity: 0; transition: opacity .3s;
+}
+.mode-card.paper::before  { background: radial-gradient(ellipse at top left, rgba(0,255,136,.08), transparent 70%); }
+.mode-card.live::before   { background: radial-gradient(ellipse at top left, rgba(255,68,102,.08), transparent 70%); }
+
+.mode-card input[type=radio] { display: none; }
+
+.mode-card:has(input:checked) { border-color: currentColor; }
+.mode-card:has(input:checked)::before { opacity: 1; }
+.mode-card.paper:has(input:checked) { border-color: var(--green); color: var(--green); box-shadow: var(--paper-glow); }
+.mode-card.live:has(input:checked)  { border-color: var(--red);   color: var(--red);   box-shadow: var(--live-glow);  }
+
+.mode-title {
+  font-size: 16px; font-weight: 800;
+  letter-spacing: 1px;
+  color: inherit;
+}
+.mode-desc {
+  font-size: 11px; color: var(--text2);
+  margin-top: 4px;
+  font-family: 'Space Mono', monospace;
+  line-height: 1.5;
+}
+
+.mode-icon { font-size: 22px; margin-bottom: 8px; }
+
+.live-warning {
+  display: none;
+  background: rgba(255,68,102,.08);
+  border: 1px solid rgba(255,68,102,.25);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 14px;
+  font-size: 11px;
+  color: #ff7a96;
+  font-family: 'Space Mono', monospace;
+  line-height: 1.6;
+}
+.live-warning.show { display: block; }
+
+/* ─── RANGE SLIDER ──────────────────────────────────────── */
+.slider-wrap { position: relative; }
+.slider-wrap input[type=range] {
+  -webkit-appearance: none;
+  width: 100%; height: 4px;
+  background: var(--bg3);
+  border-radius: 4px;
+  border: none; padding: 0;
+  cursor: pointer;
+}
+.slider-wrap input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent);
+  cursor: pointer;
+}
+.slider-value {
+  position: absolute; right: 0; top: -22px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px; color: var(--accent);
+}
+
+/* ─── TEST BUTTONS ──────────────────────────────────────── */
+.test-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all .2s;
+}
+.test-btn:hover {
+  border-color: var(--accent2); color: var(--accent);
+  background: rgba(0,212,255,.06);
+}
+.test-btn .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text3); transition: background .2s;
+}
+.test-btn.testing .dot { background: var(--amber); animation: pulse 1s infinite; }
+.test-btn.success .dot { background: var(--green); }
+.test-btn.error   .dot { background: var(--red); }
+
+.conn-status {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; margin-top: 6px;
+  padding: 6px 10px; border-radius: 4px;
+  display: none;
+}
+.conn-status.show { display: block; }
+.conn-status.success { background: rgba(0,255,136,.08); color: var(--green); border: 1px solid rgba(0,255,136,.2); }
+.conn-status.error   { background: rgba(255,68,102,.08); color: var(--red);   border: 1px solid rgba(255,68,102,.2); }
+
+/* ─── SAVE BUTTON ───────────────────────────────────────── */
+.save-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  z-index: 99;
+  background: rgba(8,12,16,.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  padding: 16px 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+}
+
+.save-status {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px; color: var(--text3);
+}
+.save-status.success { color: var(--green); }
+.save-status.error   { color: var(--red); }
+
+.save-actions { display: flex; gap: 10px; }
+
+.btn-reset {
+  padding: 10px 22px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text2);
+  border-radius: 6px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.btn-reset:hover {
+  border-color: var(--red); color: var(--red);
+  background: rgba(255,68,102,.06);
+}
+
+.btn-save {
+  padding: 11px 32px;
+  background: var(--accent);
+  border: none; border-radius: 6px;
+  color: var(--bg);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all .2s;
+  position: relative; overflow: hidden;
+}
+.btn-save:hover {
+  background: #33deff;
+  box-shadow: 0 0 20px rgba(0,212,255,.4);
+}
+.btn-save:active { transform: scale(.98); }
+.btn-save.saving { opacity:.7; pointer-events: none; }
+
+/* ─── NOTIFICATION TOAST ────────────────────────────────── */
+.toast {
+  position: fixed; top: 70px; right: 24px; z-index: 200;
+  min-width: 280px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  display: flex; align-items: flex-start; gap: 10px;
+  transform: translateX(120%);
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.toast.show { transform: translateX(0); }
+.toast.success { border-color: rgba(0,255,136,.3); color: var(--green); }
+.toast.error   { border-color: rgba(255,68,102,.3); color: var(--red); }
+.toast.info    { border-color: rgba(0,212,255,.3);  color: var(--accent); }
+.toast-icon { font-size: 16px; flex-shrink: 0; }
+.toast-msg  { line-height: 1.5; }
+
+/* ─── SCANNER CONFIG ─────────────────────────────────────── */
+.scanner-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 16px;
+}
+@media(max-width:900px){ .scanner-grid { grid-template-columns:1fr 1fr; } }
+@media(max-width:500px){ .scanner-grid { grid-template-columns:1fr; } }
+
+.metric-pill {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: border-color .2s;
+}
+.metric-pill:hover { border-color: var(--border2); }
+.metric-pill label {
+  display: block;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text3); text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.metric-pill input {
+  width: 100%;
+  background: transparent;
+  border: none; border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--accent);
+  font-family: 'Space Mono', monospace;
+  font-size: 18px; font-weight: 700;
+  padding: 2px 0 4px;
+  outline: none;
+}
+.metric-pill .unit {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; color: var(--text3);
+  margin-top: 4px;
+}
+
+/* ─── SCROLLBAR ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+</style>
+</head>
+
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <div class="dot"></div>
+    TRADE_AGENT <span style="color:var(--text3)">/ v1.0</span>
+  </div>
+  <div class="nav-links">
+    <a href="/settings" class="active">SETTINGS</a>
+    <a href="/dashboard">DASHBOARD</a>
+    <a href="/memory">MEMORY</a>
+  </div>
+  <div class="nav-badge">SYSTEM OFFLINE</div>
+</nav>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <div class="toast-icon" id="toastIcon">✓</div>
+  <div class="toast-msg"  id="toastMsg">Settings saved successfully.</div>
+</div>
+
+<!-- PAGE -->
+<div class="page-wrap">
+
+  <div class="page-header">
+    <h1>Agent <span>Configuration</span></h1>
+    <p>// CONFIGURE API KEYS · TRADING MODE · RISK PARAMETERS · SCANNER FILTERS</p>
+  </div>
+
+  <!-- ── SECTION 1: DhanHQ ───────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">01 — DhanHQ API Credentials</div>
+    <div class="card">
+      <div class="card-grid">
+
+        <div class="field">
+          <label>Client ID <span class="req">*</span></label>
+          <input type="text" id="dhan_client_id" placeholder="Your DhanHQ Client ID"
+                 value="{{ config.dhan_client_id or '' }}">
+          <span class="hint">// Found in your DhanHQ profile settings</span>
+        </div>
+
+        <div class="field">
+          <label>Access Token <span class="req">*</span> <span class="badge">SECRET</span></label>
+          <div class="input-group">
+            <input type="password" id="dhan_access_token" placeholder="••••••••••••••••••••••"
+                   value="{{ config.dhan_access_token or '' }}">
+            <button class="icon-btn" onclick="toggleVisibility('dhan_access_token', this)" title="Show/Hide">👁</button>
+          </div>
+          <span class="hint">// Generate from DhanHQ Developer Portal</span>
+        </div>
+
+      </div>
+
+      <div style="margin-top:18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <button class="test-btn" id="testDhan" onclick="testDhan()">
+          <div class="dot"></div> TEST CONNECTION
+        </button>
+        <div class="conn-status" id="dhanStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 2: Claude API ───────────────────────────── -->
+  <div class="section">
+    <div class="section-label">02 — Claude AI Configuration</div>
+    <div class="card">
+      <div class="card-grid">
+
+        <div class="field">
+          <label>Claude API Key <span class="req">*</span> <span class="badge">SECRET</span></label>
+          <div class="input-group">
+            <input type="password" id="claude_api_key" placeholder="sk-ant-api03-••••••••"
+                   value="{{ config.claude_api_key or '' }}">
+            <button class="icon-btn" onclick="toggleVisibility('claude_api_key', this)" title="Show/Hide">👁</button>
+          </div>
+          <span class="hint">// anthropic.com → API Keys</span>
+        </div>
+
+        <div class="field">
+          <label>Model</label>
+          <select id="claude_model">
+            <option value="claude-opus-4-5"    {% if config.claude_model == 'claude-opus-4-5'    %}selected{% endif %}>claude-opus-4-5 (Best)</option>
+            <option value="claude-sonnet-4-5"  {% if config.claude_model == 'claude-sonnet-4-5'  %}selected{% endif %}>claude-sonnet-4-5 (Faster)</option>
+            <option value="claude-haiku-4-5"   {% if config.claude_model == 'claude-haiku-4-5'   %}selected{% endif %}>claude-haiku-4-5 (Cheapest)</option>
+          </select>
+          <span class="hint">// Opus = deepest analysis, Haiku = lowest latency</span>
+        </div>
+
+      </div>
+
+      <div style="margin-top:18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <button class="test-btn" id="testClaude" onclick="testClaude()">
+          <div class="dot"></div> TEST API KEY
+        </button>
+        <div class="conn-status" id="claudeStatus"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 3: Trading Mode ─────────────────────────── -->
+  <div class="section">
+    <div class="section-label">03 — Trading Mode &amp; Behaviour</div>
+    <div class="card">
+
+      <div class="mode-toggle">
+        <label class="mode-card paper">
+          <input type="radio" name="trading_mode" value="paper"
+                 {% if config.trading_mode != 'live' %}checked{% endif %}
+                 onchange="onModeChange('paper')">
+          <div class="mode-icon">📋</div>
+          <div class="mode-title">PAPER</div>
+          <div class="mode-desc">Simulated trades.<br>No real capital at risk.<br>Safe for testing.</div>
+        </label>
+
+        <label class="mode-card live">
+          <input type="radio" name="trading_mode" value="live"
+                 {% if config.trading_mode == 'live' %}checked{% endif %}
+                 onchange="onModeChange('live')">
+          <div class="mode-icon">⚡</div>
+          <div class="mode-title">LIVE</div>
+          <div class="mode-desc">Real capital deployed.<br>Orders via DhanHQ.<br>Full autonomous mode.</div>
+        </label>
+      </div>
+
+      <div class="live-warning {% if config.trading_mode == 'live' %}show{% endif %}" id="liveWarning">
+        ⚠ LIVE MODE ACTIVE — The agent will place real orders autonomously via DhanHQ. Ensure your
+        risk parameters below are configured correctly. A daily kill-switch will halt all activity
+        if daily loss limit is breached.
+      </div>
+
+      <div class="card-grid" style="margin-top:20px;">
+        <div class="field">
+          <label>Trading Style</label>
+          <select id="trading_style">
+            <option value="swing_intraday" {% if config.trading_style == 'swing_intraday' %}selected{% endif %}>Swing Intraday (15-30 min)</option>
+            <option value="momentum"       {% if config.trading_style == 'momentum'       %}selected{% endif %}>Momentum (5-15 min)</option>
+            <option value="scalp"          {% if config.trading_style == 'scalp'          %}selected{% endif %}>Scalp (1-5 min)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Scan Interval</label>
+          <select id="scan_interval_min">
+            <option value="1"  {% if config.scan_interval_min == 1  %}selected{% endif %}>Every 1 min</option>
+            <option value="3"  {% if config.scan_interval_min == 3  %}selected{% endif %}>Every 3 min</option>
+            <option value="5"  {% if config.scan_interval_min == 5  %}selected{% endif %}>Every 5 min</option>
+            <option value="10" {% if config.scan_interval_min == 10 %}selected{% endif %}>Every 10 min</option>
+            <option value="15" {% if config.scan_interval_min == 15 %}selected{% endif %}>Every 15 min</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Min Conviction Score</label>
+          <div class="slider-wrap">
+            <span class="slider-value" id="convVal">{{ config.conviction_threshold or 7 }}/10</span>
+            <input type="range" id="conviction_threshold" min="5" max="10" step="1"
+                   value="{{ config.conviction_threshold or 7 }}"
+                   oninput="document.getElementById('convVal').textContent=this.value+'/10'">
+          </div>
+          <span class="hint" style="margin-top:10px">// Claude must score ≥ this to trade</span>
+        </div>
+
+        <div class="field">
+          <label>Max Open Positions</label>
+          <select id="max_open_positions">
+            <option value="1" {% if config.max_open_positions == 1 %}selected{% endif %}>1 position</option>
+            <option value="2" {% if config.max_open_positions == 2 %}selected{% endif %}>2 positions</option>
+            <option value="3" {% if config.max_open_positions == 3 %}selected{% endif %}>3 positions</option>
+            <option value="5" {% if config.max_open_positions == 5 %}selected{% endif %}>5 positions</option>
+          </select>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── SECTION 4: Risk ──────────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">04 — Risk Management Parameters</div>
+    <div class="card">
+      <div class="card-grid">
+
+        <div class="field">
+          <label>Total Capital (₹)</label>
+          <input type="number" id="total_capital" min="10000" step="10000"
+                 value="{{ config.total_capital or 100000 }}"
+                 placeholder="100000">
+          <span class="hint">// Total account capital</span>
+        </div>
+
+        <div class="field">
+          <label>Max Capital Per Trade (₹)</label>
+          <input type="number" id="max_capital_per_trade" min="1000" step="1000"
+                 value="{{ config.max_capital_per_trade or 10000 }}"
+                 placeholder="10000">
+          <span class="hint">// Max allocated to single trade</span>
+        </div>
+
+        <div class="field">
+          <label>Max Loss Per Trade (%)</label>
+          <div class="slider-wrap">
+            <span class="slider-value" id="tradeRiskVal">{{ config.max_loss_per_trade_pct or 1.0 }}%</span>
+            <input type="range" id="max_loss_per_trade_pct" min="0.5" max="3" step="0.5"
+                   value="{{ config.max_loss_per_trade_pct or 1.0 }}"
+                   oninput="document.getElementById('tradeRiskVal').textContent=parseFloat(this.value).toFixed(1)+'%'">
+          </div>
+          <span class="hint" style="margin-top:10px">// Hard stop per trade</span>
+        </div>
+
+        <div class="field">
+          <label>Daily Loss Limit (%)</label>
+          <div class="slider-wrap">
+            <span class="slider-value" id="dailyRiskVal">{{ config.daily_loss_limit_pct or 3.0 }}%</span>
+            <input type="range" id="daily_loss_limit_pct" min="1" max="10" step="0.5"
+                   value="{{ config.daily_loss_limit_pct or 3.0 }}"
+                   oninput="document.getElementById('dailyRiskVal').textContent=parseFloat(this.value).toFixed(1)+'%'">
+          </div>
+          <span class="hint" style="margin-top:10px">// Kill switch triggers here</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 5: Scanner ───────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">05 — Market Scanner Filters</div>
+    <div class="card">
+      <div class="scanner-grid">
+
+        <div class="metric-pill">
+          <label>RVOL Threshold</label>
+          <input type="number" id="rvol_threshold" min="1" max="5" step="0.1"
+                 value="{{ config.rvol_threshold or 1.5 }}">
+          <div class="unit">× avg volume</div>
+        </div>
+
+        <div class="metric-pill">
+          <label>Min Gap %</label>
+          <input type="number" id="min_gap_pct" min="0.5" max="10" step="0.5"
+                 value="{{ config.min_gap_pct or 2.0 }}">
+          <div class="unit">pre-market gap</div>
+        </div>
+
+        <div class="metric-pill">
+          <label>Min ATR (₹)</label>
+          <input type="number" id="min_atr" min="1" max="100" step="0.5"
+                 value="{{ config.min_atr or 5.0 }}">
+          <div class="unit">avg true range</div>
+        </div>
+
+        <div class="metric-pill">
+          <label>Min Market Cap</label>
+          <input type="number" id="min_market_cap" min="100" step="100"
+                 value="{{ config.min_market_cap or 500 }}">
+          <div class="unit">crores (₹)</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ── SECTION 6: Multi-AI Configuration ──────────────────── -->
+  <div class="section">
+    <div class="section-label">06 — Multi-AI Configuration (Gemini + Claude + Ollama)</div>
+    <div class="card">
+
+      <!-- AI Pipeline Visual -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 14px;font-family:'Space Mono',monospace;font-size:10px;color:var(--accent)">
+          🤖 Agent 1<br><span style="color:var(--text3)">Researcher</span>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:14px;color:var(--text3)">──────→</div>
+        <div style="background:var(--bg3);border:1px solid rgba(0,212,255,.3);border-radius:6px;padding:8px 14px;font-family:'Space Mono',monospace;font-size:10px;color:var(--green)">
+          🧠 Agent 2<br><span style="color:var(--text3)">Decision Maker</span>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:14px;color:var(--text3)">──────→</div>
+        <div style="background:var(--bg3);border:1px solid rgba(183,148,244,.3);border-radius:6px;padding:8px 14px;font-family:'Space Mono',monospace;font-size:10px;color:#b794f4">
+          ⚡ Executor<br><span style="color:var(--text3)">DhanHQ API</span>
+        </div>
+      </div>
+
+      <div class="card-grid">
+        <div class="field">
+          <label>Researcher Model <span class="badge">AGENT 1</span></label>
+          <select id="researcher_model">
+            <option value="gemini" {% if config.researcher_model == 'gemini' %}selected{% endif %}>Gemini 1.5 Pro (Recommended)</option>
+            <option value="claude" {% if config.researcher_model == 'claude' %}selected{% endif %}>Claude (if no Gemini key)</option>
+            <option value="ollama" {% if config.researcher_model == 'ollama' %}selected{% endif %}>Ollama (Offline)</option>
+          </select>
+          <span class="hint">// Gathers news, fundamentals, OSINT data</span>
+        </div>
+        <div class="field">
+          <label>Decision Model <span class="badge">AGENT 2</span></label>
+          <select id="decision_model">
+            <option value="claude" {% if config.decision_model == 'claude' %}selected{% endif %}>Claude (Recommended)</option>
+            <option value="gemini" {% if config.decision_model == 'gemini' %}selected{% endif %}>Gemini</option>
+            <option value="ollama" {% if config.decision_model == 'ollama' %}selected{% endif %}>Ollama (Offline)</option>
+          </select>
+          <span class="hint">// Final trade decision + strategy selection</span>
+        </div>
+      </div>
+
+      <!-- Gemini -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div class="section-label" style="margin-bottom:12px">GEMINI API</div>
+        <div class="card-grid">
+          <div class="field">
+            <label>Gemini API Key <span class="badge">SECRET</span></label>
+            <div class="input-group">
+              <input type="password" id="gemini_api_key" placeholder="AIza••••••••••••••••••"
+                     value="{{ config.gemini_api_key or '' }}">
+              <button class="icon-btn" onclick="toggleVisibility('gemini_api_key',this)">👁</button>
+            </div>
+            <span class="hint">// aistudio.google.com → Get API Key (Free tier available)</span>
+          </div>
+          <div class="field">
+            <label>Gemini Model</label>
+            <select id="gemini_model">
+              <option value="gemini-1.5-pro"   {% if config.gemini_model == 'gemini-1.5-pro'   %}selected{% endif %}>gemini-1.5-pro (2M context)</option>
+              <option value="gemini-1.5-flash"  {% if config.gemini_model == 'gemini-1.5-flash' %}selected{% endif %}>gemini-1.5-flash (Faster)</option>
+              <option value="gemini-2.0-flash"  {% if config.gemini_model == 'gemini-2.0-flash' %}selected{% endif %}>gemini-2.0-flash (Latest)</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="test-btn" id="testGemini" onclick="testGemini()">
+            <div class="dot"></div> TEST GEMINI
+          </button>
+          <div class="conn-status" id="geminiStatus"></div>
+        </div>
+      </div>
+
+      <!-- Ollama -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div class="section-label" style="margin-bottom:12px">OLLAMA (OFFLINE AI)</div>
+        <div class="card-grid">
+          <div class="field">
+            <label>Enable Ollama</label>
+            <select id="ollama_enabled">
+              <option value="false" {% if not config.ollama_enabled %}selected{% endif %}>Disabled</option>
+              <option value="true"  {% if config.ollama_enabled     %}selected{% endif %}>Enabled</option>
+            </select>
+            <span class="hint">// Run AI completely offline (no internet needed)</span>
+          </div>
+          <div class="field">
+            <label>Ollama Base URL</label>
+            <input type="text" id="ollama_base_url" placeholder="http://localhost:11434"
+                   value="{{ config.ollama_base_url or 'http://localhost:11434' }}">
+          </div>
+          <div class="field">
+            <label>Ollama Model</label>
+            <input type="text" id="ollama_model" placeholder="llama3 / mistral / deepseek-r1"
+                   value="{{ config.ollama_model or 'llama3' }}">
+            <span class="hint">// Run: ollama pull llama3</span>
+          </div>
+          <div class="field" style="display:flex;flex-direction:column;justify-content:flex-end">
+            <button class="test-btn" id="testOllama" onclick="testOllama()">
+              <div class="dot"></div> TEST OLLAMA
+            </button>
+            <div class="conn-status" id="ollamaStatus" style="margin-top:6px"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── SECTION 7: OSINT Intelligence ─────────────────────── -->
+  <div class="section">
+    <div class="section-label">07 — OSINT Intelligence Sources</div>
+    <div class="card">
+      <p style="font-family:'Space Mono',monospace;font-size:10px;color:var(--text2);margin-bottom:16px;line-height:1.7">
+        // OSINT tools gather news, sentiment &amp; fundamentals BEFORE Claude makes decisions.<br>
+        // NewsAPI + AlphaVantage + Telegram are optional — free RSS feeds + NSE work without them.
+      </p>
+      <div class="card-grid">
+        <div class="field">
+          <label>NewsAPI Key <span style="font-size:9px;color:var(--text3)">(optional)</span></label>
+          <div class="input-group">
+            <input type="password" id="newsapi_key" placeholder="••••••••••••••••"
+                   value="{{ config.newsapi_key or '' }}">
+            <button class="icon-btn" onclick="toggleVisibility('newsapi_key',this)">👁</button>
+          </div>
+          <span class="hint">// newsapi.org → Free 100 requests/day</span>
+        </div>
+        <div class="field">
+          <label>Alpha Vantage Key <span style="font-size:9px;color:var(--text3)">(optional)</span></label>
+          <div class="input-group">
+            <input type="password" id="alphavantage_key" placeholder="••••••••••••••••"
+                   value="{{ config.alphavantage_key or '' }}">
+            <button class="icon-btn" onclick="toggleVisibility('alphavantage_key',this)">👁</button>
+          </div>
+          <span class="hint">// alphavantage.co → Free tier available (news sentiment)</span>
+        </div>
+      </div>
+
+      <!-- Telegram Section -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div class="section-label" style="margin-bottom:12px">TELEGRAM API (Whitelist-only, no pump channels)</div>
+        <div class="card-grid">
+          <div class="field">
+            <label>Telegram API ID <span style="font-size:9px;color:var(--text3)">(optional)</span></label>
+            <input type="text" id="telegram_api_id"
+                   placeholder="12345678"
+                   value="{{ config.telegram_api_id or '' }}">
+            <span class="hint">// my.telegram.org → App Configuration → api_id</span>
+          </div>
+          <div class="field">
+            <label>Telegram API Hash <span style="font-size:9px;color:var(--text3)">(optional)</span></label>
+            <div class="input-group">
+              <input type="password" id="telegram_api_hash"
+                     placeholder="••••••••••••••••••••••••••••••••"
+                     value="{{ config.telegram_api_hash or '' }}">
+              <button class="icon-btn" onclick="toggleVisibility('telegram_api_hash',this)">👁</button>
+            </div>
+            <span class="hint">// my.telegram.org → App Configuration → api_hash</span>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding:8px 12px;background:rgba(255,180,64,.05);border:1px solid rgba(255,180,64,.15);border-radius:5px;font-family:'Space Mono',monospace;font-size:9px;color:var(--amber);line-height:1.7">
+          ⚠ Telegram used for whitelisted official channels only:<br>
+          NSEIndia · MoneycontrolNews · EconomicTimesMarkets · BSEIndia · TheHinduBusinessLine<br>
+          No pump &amp; dump channels. No unverified sources.
+        </div>
+      </div>
+
+      <div style="margin-top:12px;padding:10px 14px;background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.15);border-radius:6px;font-family:'Space Mono',monospace;font-size:9px;color:var(--text2);line-height:1.8">
+        Free sources (always active, no key needed):<br>
+        ✓ feedparser RSS (ET Markets, MoneyControl, Business Standard) &nbsp;|&nbsp;
+        ✓ trafilatura (full article text) &nbsp;|&nbsp;
+        ✓ NSE Corporate Announcements &nbsp;|&nbsp;
+        ✓ Yahoo Finance (Nifty + global signals)
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-wrap -->
+
+<!-- SAVE BAR -->
+<div class="save-bar">
+  <div class="save-status" id="saveStatus">// Unsaved changes</div>
+  <div class="save-actions">
+    <button class="btn-reset" onclick="confirmReset()">↺ RESET</button>
+    <button class="btn-save" id="saveBtn" onclick="saveSettings()">SAVE &amp; APPLY →</button>
+  </div>
+</div>
+
+<script>
+// ─── UTILITY ─────────────────────────────────────────────
+function toggleVisibility(id, btn) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.textContent = el.type === 'password' ? '👁' : '🙈';
+}
+
+function onModeChange(mode) {
+  document.getElementById('liveWarning').classList.toggle('show', mode === 'live');
+}
+
+function showToast(msg, type = 'info') {
+  const icons = { success: '✓', error: '✗', info: '◈' };
+  const t = document.getElementById('toast');
+  document.getElementById('toastIcon').textContent = icons[type] || '◈';
+  document.getElementById('toastMsg').textContent   = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+// ─── COLLECT ALL FORM VALUES ──────────────────────────────
+function collectFormData() {
+  return {
+    dhan_client_id:          document.getElementById('dhan_client_id').value.trim(),
+    dhan_access_token:       document.getElementById('dhan_access_token').value.trim(),
+    claude_api_key:          document.getElementById('claude_api_key').value.trim(),
+    claude_model:            document.getElementById('claude_model').value,
+    gemini_api_key:          document.getElementById('gemini_api_key').value.trim(),
+    gemini_model:            document.getElementById('gemini_model').value,
+    ollama_enabled:          document.getElementById('ollama_enabled').value === 'true',
+    ollama_base_url:         document.getElementById('ollama_base_url').value.trim(),
+    ollama_model:            document.getElementById('ollama_model').value.trim(),
+    researcher_model:        document.getElementById('researcher_model').value,
+    decision_model:          document.getElementById('decision_model').value,
+    newsapi_key:             document.getElementById('newsapi_key').value.trim(),
+    alphavantage_key:        document.getElementById('alphavantage_key').value.trim(),
+    telegram_api_id:         document.getElementById('telegram_api_id').value.trim(),
+    telegram_api_hash:       document.getElementById('telegram_api_hash').value.trim(),
+    trading_mode:            document.querySelector('input[name="trading_mode"]:checked').value,
+    trading_style:           document.getElementById('trading_style').value,
+    scan_interval_min:       parseInt(document.getElementById('scan_interval_min').value),
+    conviction_threshold:    parseInt(document.getElementById('conviction_threshold').value),
+    max_open_positions:      parseInt(document.getElementById('max_open_positions').value),
+    total_capital:           parseFloat(document.getElementById('total_capital').value),
+    max_capital_per_trade:   parseFloat(document.getElementById('max_capital_per_trade').value),
+    max_loss_per_trade_pct:  parseFloat(document.getElementById('max_loss_per_trade_pct').value),
+    daily_loss_limit_pct:    parseFloat(document.getElementById('daily_loss_limit_pct').value),
+    rvol_threshold:          parseFloat(document.getElementById('rvol_threshold').value),
+    min_gap_pct:             parseFloat(document.getElementById('min_gap_pct').value),
+    min_atr:                 parseFloat(document.getElementById('min_atr').value),
+    min_market_cap:          parseFloat(document.getElementById('min_market_cap').value),
+  };
+}
+
+// ─── TEST GEMINI ──────────────────────────────────────────
+async function testGemini() {
+  const btn = document.getElementById('testGemini');
+  const st  = document.getElementById('geminiStatus');
+  btn.className = 'test-btn testing'; st.className = 'conn-status'; st.textContent = '';
+  try {
+    const res = await fetch('/api/ai/test-gemini', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        gemini_api_key: document.getElementById('gemini_api_key').value.trim(),
+        gemini_model:   document.getElementById('gemini_model').value,
+      })
+    });
+    const data = await res.json();
+    btn.className = data.success ? 'test-btn success' : 'test-btn error';
+    st.className  = data.success ? 'conn-status success show' : 'conn-status error show';
+    st.textContent = (data.success ? '✓ ' : '✗ ') + data.message;
+  } catch(e) {
+    btn.className = 'test-btn error';
+    st.className  = 'conn-status error show';
+    st.textContent = '✗ Network error';
+  }
+}
+
+// ─── TEST OLLAMA ──────────────────────────────────────────
+async function testOllama() {
+  const btn = document.getElementById('testOllama');
+  const st  = document.getElementById('ollamaStatus');
+  btn.className = 'test-btn testing'; st.className = 'conn-status'; st.textContent = '';
+  try {
+    const res = await fetch('/api/ai/test-ollama', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        ollama_base_url: document.getElementById('ollama_base_url').value.trim(),
+        ollama_model:    document.getElementById('ollama_model').value.trim(),
+      })
+    });
+    const data = await res.json();
+    btn.className = data.success ? 'test-btn success' : 'test-btn error';
+    st.className  = data.success ? 'conn-status success show' : 'conn-status error show';
+    st.textContent = (data.success ? '✓ ' : '✗ ') + data.message;
+  } catch(e) {
+    btn.className = 'test-btn error';
+    st.className  = 'conn-status error show';
+    st.textContent = '✗ Network error';
+  }
+}
+
+// ─── SAVE ─────────────────────────────────────────────────
+async function saveSettings() {
+  const btn = document.getElementById('saveBtn');
+  const status = document.getElementById('saveStatus');
+  btn.classList.add('saving');
+  btn.textContent = 'SAVING…';
+
+  try {
+    const res = await fetch('/api/settings/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collectFormData())
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast('Settings saved & applied successfully.', 'success');
+      status.textContent = '// All changes saved';
+      status.className   = 'save-status success';
+    } else {
+      showToast(data.message, 'error');
+      status.textContent = '// Save failed';
+      status.className   = 'save-status error';
+    }
+  } catch (err) {
+    showToast('Network error – could not reach server.', 'error');
+  } finally {
+    btn.classList.remove('saving');
+    btn.textContent = 'SAVE & APPLY →';
+  }
+}
+
+// ─── TEST DHAN ─────────────────────────────────────────────
+async function testDhan() {
+  const btn = document.getElementById('testDhan');
+  const st  = document.getElementById('dhanStatus');
+  btn.className = 'test-btn testing';
+  btn.querySelector('.dot').style.background = '';
+  st.className  = 'conn-status';
+  st.textContent = '';
+
+  try {
+    const res = await fetch('/api/settings/test-dhan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dhan_client_id:   document.getElementById('dhan_client_id').value.trim(),
+        dhan_access_token:document.getElementById('dhan_access_token').value.trim(),
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      btn.className = 'test-btn success';
+      st.className  = 'conn-status success show';
+      st.textContent = '✓ ' + data.message;
+    } else {
+      btn.className = 'test-btn error';
+      st.className  = 'conn-status error show';
+      st.textContent = '✗ ' + data.message;
+    }
+  } catch (e) {
+    btn.className = 'test-btn error';
+    st.className  = 'conn-status error show';
+    st.textContent = '✗ Network error';
+  }
+}
+
+// ─── TEST CLAUDE ───────────────────────────────────────────
+async function testClaude() {
+  const btn = document.getElementById('testClaude');
+  const st  = document.getElementById('claudeStatus');
+  btn.className = 'test-btn testing';
+  st.className  = 'conn-status';
+  st.textContent = '';
+
+  try {
+    const res = await fetch('/api/settings/test-claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        claude_api_key: document.getElementById('claude_api_key').value.trim(),
+        claude_model:   document.getElementById('claude_model').value,
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      btn.className = 'test-btn success';
+      st.className  = 'conn-status success show';
+      st.textContent = '✓ ' + data.message;
+    } else {
+      btn.className = 'test-btn error';
+      st.className  = 'conn-status error show';
+      st.textContent = '✗ ' + data.message;
+    }
+  } catch (e) {
+    btn.className = 'test-btn error';
+    st.className  = 'conn-status error show';
+    st.textContent = '✗ Network error';
+  }
+}
+
+// ─── RESET ────────────────────────────────────────────────
+async function confirmReset() {
+  if (!confirm('Reset all settings to defaults? This cannot be undone.')) return;
+  await fetch('/api/settings/reset', { method: 'POST' });
+  showToast('Settings reset. Reloading…', 'info');
+  setTimeout(() => location.reload(), 1500);
+}
+
+// ─── MARK DIRTY ON ANY CHANGE ─────────────────────────────
+document.querySelectorAll('input, select').forEach(el => {
+  el.addEventListener('change', () => {
+    document.getElementById('saveStatus').textContent = '// Unsaved changes ●';
+    document.getElementById('saveStatus').className   = 'save-status';
+  });
+});
+</script>
+</body>
+</html>

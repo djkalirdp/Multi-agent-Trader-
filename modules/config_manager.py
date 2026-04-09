@@ -19,6 +19,8 @@ DEFAULT_CONFIG = {
     'decision_model':   'claude',   # claude | gemini | ollama
     # OSINT API keys (NEW)
     'newsapi_key': '', 'alphavantage_key': '',
+    # Telegram (NEW v4)
+    'telegram_api_id': '', 'telegram_api_hash': '',
     # Trading
     'trading_mode': 'paper', 'trading_style': 'swing_intraday',
     # Risk
