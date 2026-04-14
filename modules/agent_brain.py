@@ -31,6 +31,8 @@ from modules.memory_manager   import MemoryManager
 from modules.multi_ai         import MultiAIOrchestrator
 from modules.osint_gatherer   import OSINTGatherer
 from modules.regime_detector  import MarketRegimeDetector
+from modules.premarket_session import PreMarketSession
+from modules.logger          import get_logger
 
 SLIPPAGE_BUFFER = 0.003   # 0.3% — Bug 10
 
@@ -48,6 +50,10 @@ class AgentBrain:
         self.last_regime     = None
         self.active_trades   = {}
         self._session_start  = None
+        # Feature 4: after-market + pre-market session
+        self.premarket       = PreMarketSession(self.config_mgr, self.memory, socketio=socketio)
+        self._flog           = get_logger("agent_brain")
+        self.premarket.start_background()
 
     # ─── START / STOP ──────────────────────────────────────────
     def start(self):
@@ -61,7 +67,7 @@ class AgentBrain:
         self._thread        = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
         self._broadcast('agent_status', {'status': 'RUNNING',
-            'message': 'Agent v4 started — All bugs fixed. 180 F&O universe active.'})
+            'message': 'Agent v4 started — Bug16 fixed. Pre/After-market sessions running.'})
         return {'success': True, 'message': 'Agent v4 started'}
 
     def stop(self):
@@ -84,7 +90,21 @@ class AgentBrain:
 
                 self._log('INFO', f'═══ Cycle #{self._cycle_count} [{datetime.now().strftime("%H:%M:%S")}] ═══')
 
-                # ── PRE-CHECK ─────────────────────────────────
+                # ── PRE-CHECK + BUG 16 HARD EXIT ──────────────
+                # Hard exit at 3:10 PM before broker auto-sq-off at 3:20 PM
+                if risk.is_hard_exit_time():
+                    self._log('ERROR', '⏰ 3:10 PM — HARD EXIT: squaring off all positions before broker auto-sq-off')
+                    executor = OrderExecutor(
+                        cfg['dhan_client_id'], cfg['dhan_access_token'],
+                        cfg.get('trading_mode', 'paper')
+                    )
+                    sq = executor.square_off_all()
+                    self._log('ERROR', f'🚨 Hard exit complete: {sq.get("squared_off",0)} positions closed')
+                    self._broadcast('hard_exit', {'message': '3:10 PM hard exit — all intraday positions closed before broker sq-off'})
+                    self._broadcast('risk_update', risk.get_summary())
+                    self._sleep_interval(cfg)
+                    continue
+
                 check = risk.is_trading_allowed()
                 if not check['allowed']:
                     self._log('WARN', f'⛔ {check["reason"]}')
@@ -465,6 +485,11 @@ class AgentBrain:
             'message': message,
             'time':    datetime.now().strftime('%H:%M:%S'),
         })
+        # Also write to file log
+        _lvl = {'INFO': self._flog.info, 'SUCCESS': self._flog.info,
+                'WARN': self._flog.warning, 'ERROR': self._flog.error,
+                'TRADE': self._flog.info}.get(level, self._flog.debug)
+        _lvl(message)
 
     def _sleep_interval(self, cfg: Dict):
         mins = int(cfg.get('scan_interval_min', 5))

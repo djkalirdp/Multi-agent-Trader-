@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Pre/After-Market — TRADE_AGENT</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0a;--bg1:#111;--bg2:#161616;--bg3:#1c1c1c;--border:#2a2a2a;--orange:#ff6600;--green:#00cc44;--red:#ff2222;--yellow:#ffcc00;--cyan:#00ccff;--white:#e8e8e8;--white2:#ccc;--white3:#999;--white4:#666;--mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif}
+html{font-size:12px}body{background:var(--bg);color:var(--white2);font-family:var(--mono);min-height:100vh}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:var(--white4)}
+#hdr{background:var(--orange);color:#000;height:24px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:11px;font-weight:700;letter-spacing:.5px}
+#nav{background:var(--bg1);border-bottom:1px solid var(--border);height:28px;display:flex;align-items:center;padding:0 10px;gap:16px;font-size:10px}
+#nav a{color:var(--white3);text-decoration:none;padding:3px 8px;border:1px solid transparent}
+#nav a:hover,#nav a.active{border-color:var(--orange);color:var(--orange)}
+.wrap{max-width:1200px;margin:0 auto;padding:20px 16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+.card{background:var(--bg1);border:1px solid var(--border);padding:14px}
+.card-hdr{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--orange);text-transform:uppercase;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.card-hdr span{color:var(--white4);font-weight:400;letter-spacing:0}
+.bb-table{width:100%;border-collapse:collapse;font-size:10px}
+.bb-table th{background:var(--bg2);color:var(--orange);font-size:9px;font-weight:700;letter-spacing:1px;padding:4px 8px;border-bottom:1px solid var(--border);text-align:left}
+.bb-table td{padding:5px 8px;border-bottom:1px solid rgba(42,42,42,.6);vertical-align:middle}
+.bb-table tr:hover td{background:rgba(255,102,0,.04)}
+.sym{color:var(--yellow, #ffcc00);font-weight:700}.pos{color:var(--green)}.neg{color:var(--red)}.dim{color:var(--white4)}.warn{color:var(--yellow)}.orange{color:var(--orange)}
+.badge{display:inline-block;padding:1px 6px;font-size:9px;font-weight:700;border:1px solid}
+.badge-high{color:var(--green);border-color:var(--green)}.badge-med{color:var(--yellow);border-color:var(--yellow)}.badge-low{color:var(--red);border-color:var(--red)}
+.badge-bull{color:var(--green);border-color:var(--green)}.badge-bear{color:var(--red);border-color:var(--red)}.badge-neut{color:var(--yellow);border-color:var(--yellow)}
+.metric-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,42,.4);font-size:10px}
+.metric-row:last-child{border-bottom:none}
+.m-key{color:var(--white4)}.m-val{font-weight:700}
+.btn{background:transparent;border:1px solid;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:6px 14px;cursor:pointer;transition:all .2s}
+.btn-orange{border-color:var(--orange);color:var(--orange)}.btn-orange:hover{background:var(--orange);color:#000}
+.btn-green{border-color:var(--green);color:var(--green)}.btn-green:hover{background:var(--green);color:#000}
+.empty{text-align:center;padding:30px;color:var(--white4);font-size:10px;line-height:1.8}
+.time-window{background:var(--bg2);border:1px solid var(--border);padding:10px 14px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tw-item{font-size:10px}
+.tw-label{color:var(--white4);font-size:9px;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px}
+.tw-val{color:var(--orange);font-weight:700}
+.tw-sub{color:var(--white4);font-size:9px;margin-top:1px}
+.news-item{padding:5px 0;border-bottom:1px solid rgba(42,42,42,.4);font-size:9px}
+.news-item:last-child{border-bottom:none}
+.news-title{color:var(--white2);line-height:1.4;font-family:var(--sans);margin-bottom:2px}
+.news-meta{color:var(--white4)}
+.toast{position:fixed;bottom:20px;right:16px;min-width:260px;background:var(--bg1);border-left:3px solid var(--orange);padding:8px 12px;font-size:10px;transform:translateX(400px);transition:transform .25s}
+.toast.show{transform:translateX(0)}.toast.ok{border-color:var(--green);color:var(--green)}
+</style>
+</head>
+<body>
+<div id="hdr">
+  <span>◆ TRADE_AGENT — PRE/AFTER-MARKET TERMINAL</span>
+  <span id="hdrTime">--:--:-- IST</span>
+</div>
+<div id="nav">
+  <a href="/dashboard">DASHBOARD</a>
+  <a href="/settings">SETTINGS</a>
+  <a href="/memory">MEMORY</a>
+  <a href="/premarket" class="active">PRE/POST MARKET</a>
+  <span style="margin-left:auto;color:var(--white4)">Auto-runs: After-market 3:30 PM | Pre-market 8:45 AM</span>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="wrap">
+
+  <!-- TIME WINDOWS INFO -->
+  <div class="time-window">
+    <div class="tw-item">
+      <div class="tw-label">After-Market Window</div>
+      <div class="tw-val">3:30 PM – 9:00 PM IST</div>
+      <div class="tw-sub">Deep OSINT (Gemini Pro) + Watchlist build</div>
+    </div>
+    <div class="tw-item">
+      <div class="tw-label">Pre-Market Window</div>
+      <div class="tw-val">8:45 AM – 9:15 AM IST</div>
+      <div class="tw-sub">Overnight news check + Top 5 rescore</div>
+    </div>
+    <div class="tw-item">
+      <div class="tw-label">Entry Cutoff (Bug 16)</div>
+      <div class="tw-val" style="color:var(--red)">2:45 PM IST</div>
+      <div class="tw-sub">No new trades after this time</div>
+    </div>
+    <div class="tw-item">
+      <div class="tw-label">Hard Exit (Bug 16)</div>
+      <div class="tw-val" style="color:var(--red)">3:10 PM IST</div>
+      <div class="tw-sub">All positions auto-closed before broker sq-off at 3:20 PM</div>
+    </div>
+  </div>
+
+  <!-- MANUAL TRIGGER BUTTONS -->
+  <div style="display:flex;gap:10px;margin-bottom:16px">
+    <button class="btn btn-orange" onclick="runAfterMarket()">▶ RUN AFTER-MARKET NOW</button>
+    <button class="btn btn-green"  onclick="runPreMarket()">▶ RUN PRE-MARKET NOW</button>
+    <span style="margin-left:auto;font-size:9px;color:var(--white4)">Manual trigger for testing. Sessions run automatically at scheduled times.</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- TOMORROW'S WATCHLIST -->
+    <div class="card" style="grid-column:1/-1">
+      <div class="card-hdr">
+        Tomorrow's Watchlist
+        <span>Generated: {{ watchlist[0].get('watch_reason','—') if watchlist else 'Not generated yet' }}</span>
+      </div>
+      {% if watchlist %}
+      <table class="bb-table">
+        <thead><tr>
+          <th>#</th><th>SYMBOL</th><th>COMPOSITE</th><th>TECH</th><th>SENTIMENT</th>
+          <th>SECTOR</th><th>RVOL</th><th>GAP%</th><th>HIST W/R</th><th>NEWS</th><th>DIV</th>
+        </tr></thead>
+        <tbody>
+        {% for s in watchlist[:15] %}
+        <tr>
+          <td class="dim">{{ loop.index }}</td>
+          <td class="sym">{{ s.symbol }}</td>
+          <td class="orange" style="font-weight:700">{{ s.composite_score }}</td>
+          <td class="dim">{{ s.tech_score }}</td>
+          <td>
+            <span class="badge badge-{{ 'bull' if s.sentiment=='BULLISH' else 'bear' if s.sentiment=='BEARISH' else 'neut' }}">
+              {{ s.sentiment }} {{ s.sentiment_score }}/10
+            </span>
+          </td>
+          <td class="dim" style="font-size:9px">{{ s.sector }}</td>
+          <td class="{{ 'pos' if s.rvol >= 2 else 'dim' }}">{{ s.rvol }}x</td>
+          <td class="{{ 'pos' if s.gap_pct >= 0 else 'neg' }}">{{ '+' if s.gap_pct >= 0 else '' }}{{ '%.1f'|format(s.gap_pct) }}%</td>
+          <td class="{{ 'pos' if s.get('historical_wr',0) >= 50 else 'dim' }}">
+            {% if s.get('historical_wr') %}{{ s.historical_wr }}% ({{ s.historical_trades }}T){% else %}—{% endif %}
+          </td>
+          <td class="dim" style="font-size:9px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.news_summary[:80] }}</td>
+          <td>
+            {% if s.divergence.get('divergence') %}
+              <span style="color:var(--red);font-size:9px">⚠ {{ s.divergence.type }}</span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">
+        No watchlist yet.<br>
+        Runs automatically at 3:30 PM after market close.<br>
+        Or click "RUN AFTER-MARKET NOW" to generate manually.
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- PRE-MARKET BRIEF -->
+    <div class="card">
+      <div class="card-hdr">Pre-Market Brief <span>{{ brief.get('generated_time','Not generated') }}</span></div>
+      {% if brief and brief.get('top5') %}
+        <div class="metric-row">
+          <span class="m-key">Market Bias</span>
+          <span class="m-val badge badge-{{ 'bull' if brief.market_bias=='BULLISH' else 'bear' if brief.market_bias=='BEARISH' else 'neut' }}">{{ brief.market_bias }}</span>
+        </div>
+        <div class="metric-row">
+          <span class="m-key">SGX/Nifty Overnight</span>
+          <span class="m-val {{ 'pos' if brief.sgx_change_pct >= 0 else 'neg' }}">{{ '+' if brief.sgx_change_pct >= 0 else '' }}{{ '%.2f'|format(brief.sgx_change_pct) }}%</span>
+        </div>
+        <div class="metric-row">
+          <span class="m-key">Ready To Trade</span>
+          <span class="m-val orange">{{ brief.get('ready_to_trade',[])|join(', ') or '—' }}</span>
+        </div>
+        <br>
+        <table class="bb-table">
+          <thead><tr><th>SYMBOL</th><th>SCORE</th><th>OVERNIGHT</th><th>CONFIDENCE</th></tr></thead>
+          <tbody>
+          {% for s in brief.top5 %}
+          <tr>
+            <td class="sym">{{ s.symbol }}</td>
+            <td class="orange">{{ s.get('rescored_composite', s.composite_score) }}</td>
+            <td><span class="badge badge-{{ 'bull' if s.get('overnight_sentiment')=='BULLISH' else 'bear' if s.get('overnight_sentiment')=='BEARISH' else 'neut' }}">{{ s.get('overnight_sentiment','—') }}</span></td>
+            <td><span class="badge badge-{{ 'high' if s.get('premarket_confidence')=='HIGH' else 'med' if s.get('premarket_confidence')=='MED' else 'low' }}">{{ s.get('premarket_confidence','—') }}</span></td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+      <div class="empty">No pre-market brief.<br>Runs at 8:45 AM automatically.</div>
+      {% endif %}
+    </div>
+
+    <!-- GLOBAL SIGNALS -->
+    <div class="card">
+      <div class="card-hdr">Global Signals <span>From pre-market brief</span></div>
+      {% if brief and brief.get('global_signals') %}
+        {% for name, sig in brief.global_signals.items() %}
+        <div class="metric-row">
+          <span class="m-key">{{ name }}</span>
+          <span class="m-val {{ 'pos' if sig.change_pct >= 0 else 'neg' }}">
+            {{ sig.price }} ({{ '+' if sig.change_pct >= 0 else '' }}{{ '%.2f'|format(sig.change_pct) }}%)
+          </span>
+        </div>
+        {% endfor %}
+      {% else %}
+      <div class="empty" style="padding:20px">Global signals appear after pre-market session.</div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+
+<script>
+function tick(){document.getElementById('hdrTime').textContent=new Date().toLocaleTimeString('en-IN',{hour12:false,timeZone:'Asia/Kolkata'})+' IST'}
+setInterval(tick,1000);tick();
+
+let toastTimer;
+function toast(msg,type=''){const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(type==='ok'?'ok':'');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),4000)}
+
+async function runAfterMarket(){
+  toast('After-market scan started — this takes ~5 minutes...');
+  const r=await fetch('/api/premarket/run-aftermarket',{method:'POST'});
+  const d=await r.json();
+  toast(d.message,'ok');
+  setTimeout(()=>location.reload(),10000);
+}
+async function runPreMarket(){
+  toast('Pre-market brief started — takes ~2 minutes...');
+  const r=await fetch('/api/premarket/run-premarket',{method:'POST'});
+  const d=await r.json();
+  toast(d.message,'ok');
+  setTimeout(()=>location.reload(),5000);
+}
+</script>
+</body>
+</html>

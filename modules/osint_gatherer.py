@@ -1,11 +1,10 @@
 """
-OSINT Gatherer v4 — Complete Rebuild
-  Layer 1: feedparser (ET/MC/HBL RSS) + trafilatura (full text)
-           + Telegram whitelist + NSE announcements + Yahoo Finance
-  Layer 2: Gemini Flash+Pro parallel with CancelledError clean close (Bug 7)
-           + ATR-normalized divergence with anchor timestamp (Bug 13)
-  Layer 3: Claude deep sentiment for top 3 stocks only
-  Bugs fixed: #3 keyword unreliable, #6 Telegram, #7 ghost conn, #13 ATR normalize
+OSINT Gatherer v4.1 — Bug fixes:
+  - Gemini 429 fix: Flash-only by default, exponential backoff, rate limiter
+  - Gemini Pro only for #1 ranked stock (not all 5 simultaneously)
+  - Per-symbol 1.5s delay between Gemini calls
+  - asyncio.run() nested call fix
+  - Proper error messages returned to dashboard
 """
 
 import asyncio
@@ -13,7 +12,7 @@ import json
 import re
 import time
 import requests
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 try:
@@ -34,161 +33,278 @@ try:
 except ImportError:
     HAS_GEMINI = False
 
-
-# ─── RSS FEEDS ────────────────────────────────────────────────
 RSS_FEEDS = [
     "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms",
     "https://www.moneycontrol.com/rss/business.xml",
-    "https://www.thehindubusinessline.com/markets/?service=rss",
     "https://www.business-standard.com/rss/markets-106.rss",
-    "https://timesofindia.indiatimes.com/business/india-business/rssfeedstopstories.cms",
+    "https://www.thehindubusinessline.com/markets/?service=rss",
 ]
 
-# Telegram whitelisted channels only (no public pump channels)
 TELEGRAM_WHITELIST = [
     "NSEIndia", "MoneycontrolNews", "EconomicTimesMarkets",
     "BSEIndia", "TheHinduBusinessLine",
 ]
 
+# Gemini free tier: 60 RPM = 1 per second. We use 1.5s delay to stay safe.
+_GEMINI_CALL_DELAY = 1.5
+_last_gemini_call  = 0.0
+
+
+def _gemini_rate_wait():
+    """Block until safe to make next Gemini call."""
+    global _last_gemini_call
+    elapsed = time.time() - _last_gemini_call
+    if elapsed < _GEMINI_CALL_DELAY:
+        time.sleep(_GEMINI_CALL_DELAY - elapsed)
+    _last_gemini_call = time.time()
+
 
 class OSINTGatherer:
     def __init__(self, config: Dict):
-        self.config         = config
-        self.newsapi_key    = config.get("newsapi_key", "")
-        self.alpha_key      = config.get("alphavantage_key", "")
-        self.gemini_key     = config.get("gemini_api_key", "")
-        self.telegram_id    = config.get("telegram_api_id", "")
-        self.telegram_hash  = config.get("telegram_api_hash", "")
-        self.session        = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; TradingAgent/4.0)"})
+        self.config        = config
+        self.newsapi_key   = config.get("newsapi_key", "")
+        self.alpha_key     = config.get("alphavantage_key", "")
+        self.gemini_key    = config.get("gemini_api_key", "")
+        self.telegram_id   = config.get("telegram_api_id", "")
+        self.telegram_hash = config.get("telegram_api_hash", "")
+        self.session       = requests.Session()
+        self.session.headers.update({"User-Agent": "Mozilla/5.0 (TradingAgent/4.1)"})
 
         if HAS_GEMINI and self.gemini_key:
             genai.configure(api_key=self.gemini_key)
 
     # ─── PUBLIC API ───────────────────────────────────────────
 
-    def gather(self, symbol: str, atr: float = 0.0, use_deep_analysis: bool = False) -> Dict:
-        """Full OSINT sweep. atr passed for normalized divergence (Bug 13)."""
+    def gather(self, symbol: str, atr: float = 0.0,
+               use_pro_model: bool = False) -> Dict:
+        """
+        Full OSINT for one symbol.
+        use_pro_model=True only for the #1 ranked stock (saves quota).
+        """
         result = {
-            "symbol":          symbol,
-            "timestamp":       datetime.now().isoformat(),
-            "price_at_fetch":  None,
-            "news":            [],
-            "sentiment":       "NEUTRAL",
-            "sentiment_score": 5,
-            "fundamentals":    {},
-            "nse_announcements": [],
-            "global_signals":  {},
-            "divergence":      {},
-            "summary":         "",
-            "errors":          [],
+            "symbol":           symbol,
+            "timestamp":        datetime.now().isoformat(),
+            "price_at_fetch":   None,
+            "news":             [],
+            "sentiment":        "NEUTRAL",
+            "sentiment_score":  5,
+            "fundamentals":     {},
+            "nse_announcements":[],
+            "global_signals":   {},
+            "divergence":       {},
+            "summary":          "",
+            "model_used":       "none",
+            "errors":           [],
         }
 
-        # Record LTP at news fetch time — divergence anchor (Bug 13)
-        price_at_news_time = self._get_current_ltp(symbol)
-        result["price_at_fetch"] = price_at_news_time
+        try:
+            # Anchor LTP for divergence
+            price_at_news_time          = self._get_current_ltp(symbol)
+            result["price_at_fetch"]    = price_at_news_time
 
-        # Layer 1: Data collection
-        news_articles       = self._collect_news(symbol)
-        nse_announcements   = self._fetch_nse_announcements(symbol)
-        global_signals      = self._fetch_global_signals()
-        result["news"]             = news_articles
-        result["nse_announcements"]= nse_announcements
-        result["global_signals"]   = global_signals
+            # Layer 1 — collect news
+            news        = self._collect_news(symbol)
+            anns        = self._fetch_nse_announcements(symbol)
+            global_sig  = self._fetch_global_signals()
+            result["news"]              = news
+            result["nse_announcements"] = anns
+            result["global_signals"]    = global_sig
 
-        # Layer 2: AI sentiment — Gemini parallel
-        if HAS_GEMINI and self.gemini_key and news_articles:
-            ai_result = asyncio.run(self._gemini_parallel_sentiment(symbol, news_articles))
-            result.update(ai_result)
-        else:
-            # Fallback: keyword scoring
-            sentiment, score = self._keyword_sentiment(news_articles, nse_announcements)
-            result["sentiment"]       = sentiment
-            result["sentiment_score"] = score
+            # Layer 2 — AI sentiment (Gemini Flash with rate limiter)
+            if HAS_GEMINI and self.gemini_key and news:
+                ai = self._gemini_sentiment_safe(symbol, news, use_pro=use_pro_model)
+                result.update(ai)
+            else:
+                s, sc = self._keyword_sentiment(news, anns)
+                result["sentiment"]      = s
+                result["sentiment_score"]= sc
+                result["model_used"]     = "keyword"
 
-        # Bug 13: ATR-normalized divergence check
-        if price_at_news_time and atr > 0:
-            current_price = self._get_current_ltp(symbol) or price_at_news_time
-            div = self._detect_divergence_atr(
-                symbol, result["sentiment_score"],
-                current_price, price_at_news_time, atr
-            )
-            result["divergence"] = div
+            # ATR-normalized divergence
+            if price_at_news_time and atr > 0:
+                cur = self._get_current_ltp(symbol) or price_at_news_time
+                result["divergence"] = self._detect_divergence_atr(
+                    result["sentiment_score"], cur, price_at_news_time, atr
+                )
 
-        result["summary"] = self._build_summary(symbol, result)
+            result["summary"] = self._build_summary(symbol, result)
+
+        except Exception as e:
+            result["errors"].append(str(e))
+            result["summary"] = f"OSINT error: {e}"
+
         return result
 
-    def gather_batch(self, symbols: List[str], candidates: List[Dict] = None) -> Dict[str, Dict]:
-        """Batch gather. Pass candidates list to use per-symbol ATR."""
-        results  = {}
-        atr_map  = {c["symbol"]: c.get("atr", 0.0) for c in (candidates or [])}
-        # Top 3 get deep analysis (Claude), rest get Gemini Flash
+    def gather_batch(self, symbols: List[str],
+                     candidates: List[Dict] = None) -> Dict[str, Dict]:
+        """
+        Batch OSINT. Only first symbol gets Pro model.
+        1.5s delay between calls prevents 429.
+        """
+        results = {}
+        atr_map = {c["symbol"]: c.get("atr", 0.0) for c in (candidates or [])}
+
         for i, sym in enumerate(symbols):
             try:
-                results[sym] = self.gather(sym, atr=atr_map.get(sym, 0.0),
-                                            use_deep_analysis=(i < 3))
-                time.sleep(0.3)
+                results[sym] = self.gather(
+                    sym,
+                    atr=atr_map.get(sym, 0.0),
+                    use_pro_model=(i == 0)   # Pro only for top stock
+                )
             except Exception as e:
-                results[sym] = {"symbol": sym, "error": str(e), "sentiment": "NEUTRAL", "sentiment_score": 5}
+                results[sym] = {
+                    "symbol": sym, "error": str(e),
+                    "sentiment": "NEUTRAL", "sentiment_score": 5,
+                    "news": [], "summary": f"Error: {e}"
+                }
+            # Rate limit: wait between symbols
+            if i < len(symbols) - 1:
+                time.sleep(_GEMINI_CALL_DELAY)
+
         return results
 
-    # ─── LAYER 1: NEWS COLLECTION ─────────────────────────────
+    # ─── GEMINI SAFE CALL (no asyncio.run nesting) ───────────
+
+    def _gemini_sentiment_safe(self, symbol: str, articles: List[Dict],
+                                use_pro: bool = False) -> Dict:
+        """
+        Synchronous Gemini call with:
+          - Rate limiter (1.5s between calls)
+          - Retry on 429 with exponential backoff (max 3 retries)
+          - Flash by default, Pro only when use_pro=True and quota allows
+          - Returns keyword fallback on persistent failure
+        """
+        if not HAS_GEMINI or not self.gemini_key:
+            s, sc = self._keyword_sentiment(articles, [])
+            return {"sentiment": s, "sentiment_score": sc, "model_used": "keyword_no_gemini"}
+
+        model_name = "gemini-1.5-pro" if use_pro else "gemini-1.5-flash"
+        text       = self._build_news_text(symbol, articles)
+        prompt     = self._build_sentiment_prompt(symbol, text)
+
+        for attempt in range(3):
+            try:
+                _gemini_rate_wait()
+                model   = genai.GenerativeModel(model_name)
+                resp    = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        temperature=0.1, max_output_tokens=400
+                    )
+                )
+                raw  = resp.text.strip()
+                # Strip markdown fences if present
+                raw  = re.sub(r'^```(?:json)?\s*', '', raw)
+                raw  = re.sub(r'\s*```$', '', raw)
+                data = json.loads(raw.strip())
+
+                score = max(1, min(10, int(data.get("overall_sentiment_score", 5))))
+                return {
+                    "sentiment":       data.get("sentiment", "NEUTRAL"),
+                    "sentiment_score": score,
+                    "fundamentals":    {k: v for k, v in data.items()
+                                        if k not in ("sentiment", "overall_sentiment_score",
+                                                     "one_line_summary", "_model")},
+                    "ai_summary":      data.get("one_line_summary", ""),
+                    "model_used":      model_name,
+                }
+
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "quota" in err_str or "rate" in err_str:
+                    # 429 → downgrade to Flash, backoff
+                    model_name = "gemini-1.5-flash"
+                    wait       = 2 ** attempt * 2   # 2s, 4s, 8s
+                    time.sleep(wait)
+                    continue
+                elif "json" in err_str or "parse" in err_str:
+                    # Bad JSON → try keyword fallback directly
+                    break
+                else:
+                    break
+
+        # All retries failed → keyword fallback
+        s, sc = self._keyword_sentiment(articles, [])
+        return {"sentiment": s, "sentiment_score": sc, "model_used": "keyword_fallback"}
+
+    def _build_sentiment_prompt(self, symbol: str, text: str) -> str:
+        return f"""Analyze this {symbol} NSE stock news for intraday trading.
+Return ONLY valid JSON, no markdown, no explanation.
+
+{{
+  "earnings_revenue": "beat/miss/in-line/N/A",
+  "vs_expectation": "above/below/in-line/N/A",
+  "management_guidance": "positive/negative/neutral/N/A",
+  "analyst_action": "upgrade/downgrade/initiate/maintain/N/A",
+  "regulatory_news": "positive/negative/neutral/N/A",
+  "insider_activity": "buying/selling/none/N/A",
+  "overall_sentiment_score": 5,
+  "sentiment": "NEUTRAL",
+  "one_line_summary": "one sentence max"
+}}
+
+News:
+{text[:2500]}"""
+
+    # ─── NEWS COLLECTION ──────────────────────────────────────
 
     def _collect_news(self, symbol: str) -> List[Dict]:
         articles = []
 
-        # feedparser RSS
+        # Source 1: feedparser RSS (always free — ET, MC, BS)
         if HAS_FEEDPARSER:
             articles += self._feedparser_news(symbol)
 
-        # NewsAPI (if key available)
-        if self.newsapi_key:
+        # Source 2: Google News RSS (always free, no key needed)
+        articles += self._google_news_rss(symbol)
+
+        # Source 3: Investing.com RSS (always free)
+        articles += self._investing_rss(symbol)
+
+        # Source 4: NewsAPI (optional, only if key provided)
+        if self.newsapi_key and len(articles) < 5:
             articles += self._newsapi_search(symbol)
 
-        # Google News RSS fallback
-        if len(articles) < 3:
-            articles += self._google_news_rss(symbol)
-
-        # Telegram whitelisted channels
         articles += self._telegram_whitelist_news(symbol)
 
-        # Dedup by title
+        # Dedup
         seen, unique = set(), []
         for a in articles:
             t = a.get("title", "")
             if t and t not in seen:
                 seen.add(t); unique.append(a)
 
-        # trafilatura: fetch full text for top 3
+        # Full text via trafilatura (top 2 only to save time)
         if HAS_TRAFILATURA:
-            for article in unique[:3]:
-                if article.get("url"):
+            for article in unique[:2]:
+                url = article.get("url", "")
+                if url:
                     try:
-                        downloaded = trafilatura.fetch_url(article["url"])
-                        if downloaded:
-                            text = trafilatura.extract(downloaded, include_comments=False,
-                                                        include_tables=False)
-                            if text:
-                                article["full_text"] = text[:2000]
+                        dl = trafilatura.fetch_url(url)
+                        if dl:
+                            txt = trafilatura.extract(dl, include_comments=False,
+                                                       include_tables=False)
+                            if txt:
+                                article["full_text"] = txt[:1500]
                     except Exception:
                         pass
 
-        return unique[:15]
+        return unique[:12]
 
     def _feedparser_news(self, symbol: str) -> List[Dict]:
         articles = []
-        for feed_url in RSS_FEEDS:
+        for url in RSS_FEEDS:
             try:
-                feed = feedparser.parse(feed_url)
-                for entry in feed.entries[:20]:
-                    title = entry.get("title", "")
-                    if self._symbol_in_text(symbol, title):
+                feed = feedparser.parse(url)
+                for e in feed.entries[:15]:
+                    title = e.get("title", "")
+                    if self._symbol_in_text(symbol, title + " " + e.get("summary", "")):
                         articles.append({
                             "title":        title,
                             "source":       feed.feed.get("title", "RSS"),
-                            "url":          entry.get("link", ""),
-                            "published_at": entry.get("published", ""),
-                            "description":  entry.get("summary", ""),
+                            "url":          e.get("link", ""),
+                            "published_at": e.get("published", ""),
+                            "description":  e.get("summary", "")[:300],
                         })
             except Exception:
                 continue
@@ -196,318 +312,228 @@ class OSINTGatherer:
 
     def _newsapi_search(self, symbol: str) -> List[Dict]:
         try:
-            company = self._symbol_to_company(symbol)
-            url = (f"https://newsapi.org/v2/everything?q={requests.utils.quote(company + ' NSE India')}"
-                   f"&language=en&sortBy=publishedAt&pageSize=5"
-                   f"&from={(datetime.now()-timedelta(days=2)).strftime('%Y-%m-%d')}"
-                   f"&apiKey={self.newsapi_key}")
-            resp = self.session.get(url, timeout=10)
-            if resp.status_code == 200:
+            q    = requests.utils.quote(f"{self._symbol_to_company(symbol)} NSE India")
+            from_d = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+            url  = (f"https://newsapi.org/v2/everything?q={q}"
+                    f"&language=en&sortBy=publishedAt&pageSize=5&from={from_d}"
+                    f"&apiKey={self.newsapi_key}")
+            r    = self.session.get(url, timeout=8)
+            if r.status_code == 200:
                 return [{"title": a.get("title",""), "source": a.get("source",{}).get("name",""),
                          "url": a.get("url",""), "published_at": a.get("publishedAt",""),
                          "description": a.get("description","")}
-                        for a in resp.json().get("articles", [])]
+                        for a in r.json().get("articles", [])]
         except Exception:
             pass
         return []
 
     def _google_news_rss(self, symbol: str) -> List[Dict]:
         try:
-            query = f"{symbol} NSE stock India"
-            url   = f"https://news.google.com/rss/search?q={requests.utils.quote(query)}&hl=en-IN&gl=IN&ceid=IN:en"
-            resp  = self.session.get(url, timeout=8)
+            q    = requests.utils.quote(f"{symbol} NSE stock India")
+            url  = f"https://news.google.com/rss/search?q={q}&hl=en-IN&gl=IN&ceid=IN:en"
+            resp = self.session.get(url, timeout=6)
             if resp.status_code != 200: return []
-            items    = re.findall(r'<item>(.*?)</item>', resp.text, re.DOTALL)
-            articles = []
+            items = re.findall(r'<item>(.*?)</item>', resp.text, re.DOTALL)
+            arts  = []
             for item in items[:5]:
-                title   = re.search(r'<title>(.*?)</title>', item)
-                pubdate = re.search(r'<pubDate>(.*?)</pubDate>', item)
-                link    = re.search(r'<link>(.*?)</link>', item)
-                if title:
-                    articles.append({
-                        "title":        re.sub(r'<[^>]+>', '', title.group(1)),
+                t = re.search(r'<title>(.*?)</title>', item)
+                d = re.search(r'<pubDate>(.*?)</pubDate>', item)
+                l = re.search(r'<link>(.*?)</link>', item)
+                if t:
+                    arts.append({
+                        "title":        re.sub(r'<[^>]+>', '', t.group(1)),
                         "source":       "Google News",
-                        "url":          link.group(1) if link else "",
-                        "published_at": pubdate.group(1) if pubdate else "",
+                        "url":          l.group(1) if l else "",
+                        "published_at": d.group(1) if d else "",
                     })
-            return articles
+            return arts
         except Exception:
             return []
 
     def _telegram_whitelist_news(self, symbol: str) -> List[Dict]:
-        """
-        Only whitelisted Telegram channels. No pump-and-dump channels.
-        Uses public web preview — no Telethon required (optional upgrade).
-        """
-        articles = []
-        for channel in TELEGRAM_WHITELIST[:2]:
+        arts = []
+        for ch in TELEGRAM_WHITELIST[:2]:
             try:
-                url  = f"https://t.me/s/{channel}"
-                resp = self.session.get(url, timeout=6)
+                resp = self.session.get(f"https://t.me/s/{ch}", timeout=5)
                 if resp.status_code != 200: continue
-                messages = re.findall(r'<div class="tgme_widget_message_text">(.*?)</div>',
-                                       resp.text, re.DOTALL)
-                for msg in messages[:10]:
+                msgs = re.findall(r'<div class="tgme_widget_message_text">(.*?)</div>',
+                                   resp.text, re.DOTALL)
+                for msg in msgs[:8]:
                     clean = re.sub(r'<[^>]+>', '', msg).strip()
                     if self._symbol_in_text(symbol, clean) and len(clean) > 20:
-                        articles.append({
-                            "title":   clean[:120],
-                            "source":  f"Telegram/{channel}",
-                            "url":     url,
+                        arts.append({
+                            "title": clean[:120], "source": f"Telegram/{ch}",
+                            "url": f"https://t.me/s/{ch}",
                             "published_at": datetime.now().isoformat(),
                         })
             except Exception:
                 continue
-        return articles
+        return arts
 
-    # ─── LAYER 2: GEMINI PARALLEL + CancelledError fix (Bug 7) ─
-
-    async def _gemini_parallel_sentiment(self, symbol: str, articles: List[Dict]) -> Dict:
-        """
-        Run Flash + Pro simultaneously. 5s timeout on Pro.
-        CancelledError cleanly closes connection. (Bug 7 fixed)
-        """
-        if not HAS_GEMINI or not self.gemini_key:
-            return {"sentiment": "NEUTRAL", "sentiment_score": 5}
-
-        text = self._build_news_text(symbol, articles)
-
-        flash_model = genai.GenerativeModel("gemini-1.5-flash")
-        pro_model   = genai.GenerativeModel("gemini-1.5-pro")
-
-        prompt = f"""Analyze this {symbol} news for NSE intraday trading. Extract:
-- earnings_revenue: beat/miss/in-line or N/A
-- vs_expectation: above/below/in-line (CRITICAL — market reacts to surprises)
-- management_guidance: positive/negative/neutral/N/A
-- analyst_action: upgrade/downgrade/initiate/maintain/N/A
-- regulatory_news: positive/negative/neutral/N/A
-- insider_activity: buying/selling/none/N/A
-- overall_sentiment_score: 1-10 (1=very bearish, 10=very bullish)
-- sentiment: BULLISH/BEARISH/NEUTRAL
-- one_line_summary: one sentence
-
-Return JSON only. No markdown.
-
-News: {text[:3000]}"""
-
-        async def call_model(model, name: str) -> Dict:
-            try:
-                resp = await asyncio.to_thread(
-                    model.generate_content,
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
-                        temperature=0.1, max_output_tokens=500
-                    )
-                )
-                raw   = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-                data  = json.loads(raw)
-                data["_model"] = name
-                return data
-            except asyncio.CancelledError:
-                # Bug 7: clean close on cancellation
-                try:
-                    pass  # google-generativeai handles cleanup internally
-                except Exception:
-                    pass
-                raise
-            except Exception as e:
-                return {"error": str(e), "_model": name}
-
-        flash_task = asyncio.create_task(call_model(flash_model, "gemini-flash"))
-        pro_task   = asyncio.create_task(call_model(pro_model,   "gemini-pro"))
-
-        result_data = {}
+    def _investing_rss(self, symbol: str) -> list:
+        """Investing.com RSS — free, no API key. Good for NSE stocks."""
         try:
-            # Wait for Pro with 5s timeout
-            result_data = await asyncio.wait_for(asyncio.shield(pro_task), timeout=5.0)
-            flash_task.cancel()   # Pro arrived — cancel Flash
-        except asyncio.TimeoutError:
-            # Pro timed out — use Flash result
-            try:
-                result_data = await asyncio.wait_for(flash_task, timeout=8.0)
-            except Exception:
-                result_data = {}
+            company = self._symbol_to_company(symbol)
+            q = company.lower().replace(' ', '-').replace('&', '')
+            urls = [
+                f'https://www.investing.com/rss/news_{symbol.lower()}.rss',
+                'https://in.investing.com/rss/news_285.rss',   # India markets
+            ]
+            arts = []
+            for url in urls:
+                try:
+                    resp = self.session.get(url, timeout=5)
+                    if resp.status_code != 200: continue
+                    items = __import__('re').findall(r'<item>(.*?)</item>', resp.text, 8)
+                    for item in items[:5]:
+                        import re
+                        t = re.search(r'<title>(.*?)</title>', item)
+                        l = re.search(r'<link>(.*?)</link>', item)
+                        d = re.search(r'<pubDate>(.*?)</pubDate>', item)
+                        if t:
+                            title = re.sub(r'<[^>]+>','',t.group(1))
+                            if self._symbol_in_text(symbol, title):
+                                arts.append({'title':title,'source':'Investing.com',
+                                             'url': l.group(1) if l else '','published_at': d.group(1) if d else ''})
+                except Exception:
+                    continue
+            return arts[:3]
         except Exception:
-            result_data = {}
-        finally:
-            # Clean up any pending tasks
-            if not flash_task.done():
-                flash_task.cancel()
-                try: await flash_task
-                except Exception: pass
-            if not pro_task.done():
-                pro_task.cancel()
-                try: await pro_task
-                except Exception: pass
+            return []
 
-        if result_data and not result_data.get("error"):
-            score = int(result_data.get("overall_sentiment_score", 5))
-            score = max(1, min(10, score))
-            return {
-                "sentiment":        result_data.get("sentiment", "NEUTRAL"),
-                "sentiment_score":  score,
-                "fundamentals":     {k: v for k, v in result_data.items() if k not in
-                                     ("sentiment", "overall_sentiment_score", "one_line_summary", "_model")},
-                "ai_summary":       result_data.get("one_line_summary", ""),
-                "model_used":       result_data.get("_model", "unknown"),
-            }
-
-        # Fallback to keyword
-        sentiment, score = self._keyword_sentiment(articles, [])
-        return {"sentiment": sentiment, "sentiment_score": score, "model_used": "keyword_fallback"}
-
-    def _build_news_text(self, symbol: str, articles: List[Dict]) -> str:
-        parts = []
-        for a in articles[:8]:
-            title   = a.get("title", "")
-            desc    = a.get("description", "")
-            full    = a.get("full_text", "")
-            src     = a.get("source", "")
-            parts.append(f"[{src}] {title}. {desc[:200]} {full[:300]}")
-        return "\n\n".join(parts)
-
-    # ─── LAYER 3: ATR-NORMALIZED DIVERGENCE (Bug 13) ──────────
-
-    def _detect_divergence_atr(self, symbol: str, sentiment_score: float,
-                                current_price: float, price_at_news_time: float,
-                                daily_atr: float) -> Dict:
-        """
-        Bug 13 fix: normalize price movement against ATR, not hardcoded 0.2%.
-        Anchor = LTP at news fetch time (not market open).
-        """
-        if daily_atr <= 0 or price_at_news_time <= 0:
-            return {"divergence": False}
-
-        price_change   = current_price - price_at_news_time
-        atr_normalized = price_change / daily_atr   # how many ATRs moved
-
-        THRESHOLD = 0.10   # 10% of ATR = meaningful move
-
-        if sentiment_score >= 7 and atr_normalized <= THRESHOLD:
-            return {
-                "divergence": True,
-                "type":       "BEARISH_TRAP",
-                "signal":     f"Bullish news but price moved only {atr_normalized:.2f}x ATR — smart money not buying",
-                "atr_normalized": round(atr_normalized, 3),
-            }
-        if sentiment_score <= 3 and atr_normalized >= -THRESHOLD:
-            return {
-                "divergence": True,
-                "type":       "BULLISH_HIDDEN",
-                "signal":     f"Bearish news but price held {atr_normalized:.2f}x ATR — hidden strength",
-                "atr_normalized": round(atr_normalized, 3),
-            }
-        return {"divergence": False, "atr_normalized": round(atr_normalized, 3)}
-
-    # ─── NSE ANNOUNCEMENTS ────────────────────────────────────
+    # ─── NSE + GLOBAL ─────────────────────────────────────────
 
     def _fetch_nse_announcements(self, symbol: str) -> List[Dict]:
         try:
-            headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json",
-                       "Referer": "https://www.nseindia.com"}
-            self.session.get("https://www.nseindia.com", headers=headers, timeout=5)
-            resp = self.session.get(
+            h = {"User-Agent": "Mozilla/5.0", "Accept": "application/json",
+                 "Referer": "https://www.nseindia.com"}
+            self.session.get("https://www.nseindia.com", headers=h, timeout=4)
+            r = self.session.get(
                 f"https://www.nseindia.com/api/quote-equity?symbol={symbol}",
-                headers=headers, timeout=8
+                headers=h, timeout=7
             )
-            if resp.status_code == 200:
-                corp = resp.json().get("corporateInfo", {}).get("corporate", [])
+            if r.status_code == 200:
+                corp = r.json().get("corporateInfo", {}).get("corporate", [])
                 return [{"subject": a.get("subject",""), "ex_date": a.get("exDate",""),
                          "type": a.get("purpose","")} for a in corp[:5]]
         except Exception:
             pass
         return []
 
-    # ─── GLOBAL SIGNALS ───────────────────────────────────────
-
     def _fetch_global_signals(self) -> Dict:
         signals = {}
-        tickers = {"NIFTY": "^NSEI", "DOW_FUTURES": "YM=F", "SGX_NIFTY": "^NIFTY50"}
+        tickers = {"NIFTY": "^NSEI", "DOW": "^DJI", "SGX": "^NSEI"}
         for name, ticker in tickers.items():
             try:
                 url  = f"https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(ticker)}?interval=1d&range=2d"
-                resp = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
-                if resp.status_code == 200:
-                    closes = (resp.json().get("chart",{}).get("result",[{}])[0]
-                              .get("indicators",{}).get("quote",[{}])[0].get("close",[]))
+                r    = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200:
+                    closes = (r.json().get("chart",{}).get("result",[{}])[0]
+                               .get("indicators",{}).get("quote",[{}])[0].get("close",[]))
                     if len(closes) >= 2 and closes[-1] and closes[-2]:
-                        chg = ((closes[-1]-closes[-2])/closes[-2])*100
-                        signals[name] = {"price": round(closes[-1],2),
-                                          "change_pct": round(chg,2),
-                                          "direction": "UP" if chg>0 else "DOWN"}
+                        chg = ((closes[-1] - closes[-2]) / closes[-2]) * 100
+                        signals[name] = {"price": round(closes[-1], 2),
+                                          "change_pct": round(chg, 2),
+                                          "direction": "UP" if chg > 0 else "DOWN"}
             except Exception:
                 continue
         return signals
 
-    # ─── CURRENT LTP ──────────────────────────────────────────
-
     def _get_current_ltp(self, symbol: str) -> Optional[float]:
-        """Quick LTP fetch for divergence anchor."""
         try:
-            headers = {"User-Agent": "Mozilla/5.0", "Accept": "application/json",
-                       "Referer": "https://www.nseindia.com"}
-            self.session.get("https://www.nseindia.com", headers=headers, timeout=4)
-            resp = self.session.get(
+            h = {"User-Agent": "Mozilla/5.0", "Accept": "application/json",
+                 "Referer": "https://www.nseindia.com"}
+            self.session.get("https://www.nseindia.com", headers=h, timeout=3)
+            r = self.session.get(
                 f"https://www.nseindia.com/api/quote-equity?symbol={symbol}",
-                headers=headers, timeout=6
+                headers=h, timeout=5
             )
-            if resp.status_code == 200:
-                ltp = resp.json().get("priceInfo", {}).get("lastPrice")
-                if ltp: return float(ltp)
+            if r.status_code == 200:
+                ltp = r.json().get("priceInfo", {}).get("lastPrice")
+                return float(ltp) if ltp else None
         except Exception:
             pass
         return None
 
-    # ─── KEYWORD SENTIMENT FALLBACK ───────────────────────────
+    # ─── ATR DIVERGENCE ───────────────────────────────────────
+
+    def _detect_divergence_atr(self, sentiment_score: float,
+                                current_price: float, price_at_news_time: float,
+                                daily_atr: float) -> Dict:
+        if daily_atr <= 0 or price_at_news_time <= 0:
+            return {"divergence": False}
+        change      = current_price - price_at_news_time
+        atr_norm    = change / daily_atr
+        THRESHOLD   = 0.10
+        if sentiment_score >= 7 and atr_norm <= THRESHOLD:
+            return {"divergence": True, "type": "BEARISH_TRAP",
+                    "signal": f"Bullish news but only {atr_norm:.2f}x ATR move",
+                    "atr_normalized": round(atr_norm, 3)}
+        if sentiment_score <= 3 and atr_norm >= -THRESHOLD:
+            return {"divergence": True, "type": "BULLISH_HIDDEN",
+                    "signal": f"Bearish news but price held {atr_norm:.2f}x ATR",
+                    "atr_normalized": round(atr_norm, 3)}
+        return {"divergence": False, "atr_normalized": round(atr_norm, 3)}
+
+    # ─── KEYWORD FALLBACK ─────────────────────────────────────
 
     BULLISH = ["surge","rally","beat","strong","profit","growth","buy","upgrade","bullish",
                "positive","record","outperform","breakout","higher","soar","jump","gains",
-               "revenue beat","earnings beat","above expectation","recommend buy"]
+               "revenue beat","earnings beat","above expectation"]
     BEARISH = ["fall","drop","loss","weak","miss","downgrade","sell","cut","bearish",
                "negative","decline","underperform","risk","crash","breakdown","lower",
                "slump","plunge","revenue miss","earnings miss","below expectation"]
 
-    def _keyword_sentiment(self, news: List[Dict], announcements: List[Dict]) -> Tuple[str, float]:
-        text  = " ".join([(n.get("title","")+" "+n.get("description","")).lower() for n in news]
-                         + [a.get("subject","").lower() for a in announcements])
+    def _keyword_sentiment(self, news: List[Dict],
+                            anns: List[Dict]) -> Tuple[str, float]:
+        text  = " ".join([(n.get("title","")+" "+n.get("description","")).lower()
+                           for n in news] + [a.get("subject","").lower() for a in anns])
         bull  = sum(text.count(w) for w in self.BULLISH)
         bear  = sum(text.count(w) for w in self.BEARISH)
         total = bull + bear
         if total == 0: return "NEUTRAL", 5.0
         score = round((bull / total) * 10, 1)
-        if score >= 7:  return "BULLISH", score
-        elif score <= 3:return "BEARISH", score
+        if   score >= 7: return "BULLISH", score
+        elif score <= 3: return "BEARISH", score
         return "NEUTRAL", score
 
     # ─── HELPERS ──────────────────────────────────────────────
+
+    def _build_news_text(self, symbol: str, articles: List[Dict]) -> str:
+        parts = []
+        for a in articles[:6]:
+            src  = a.get("source", "")
+            t    = a.get("title", "")
+            d    = a.get("description", "")[:150]
+            full = a.get("full_text", "")[:300]
+            parts.append(f"[{src}] {t}. {d} {full}")
+        return "\n\n".join(parts)
 
     def _build_summary(self, symbol: str, data: Dict) -> str:
         parts = []
         if data.get("ai_summary"):
             parts.append(data["ai_summary"])
         elif data.get("news"):
-            parts.append(data["news"][0].get("title","")[:100])
-        anns = data.get("nse_announcements", [])
-        if anns:
-            parts.append(f"NSE: {anns[0].get('subject','')[:60]}")
-        gs = data.get("global_signals", {})
-        if gs.get("NIFTY"):
-            n = gs["NIFTY"]; parts.append(f"Nifty: {n['change_pct']:+.1f}%")
+            parts.append(data["news"][0].get("title", "")[:100])
+        if data.get("nse_announcements"):
+            parts.append(f'NSE: {data["nse_announcements"][0].get("subject","")[:60]}')
+        n = data.get("global_signals", {}).get("NIFTY", {})
+        if n:
+            parts.append(f'Nifty: {n["change_pct"]:+.1f}%')
         return " | ".join(parts[:3]) if parts else "No significant news."
 
-    def _symbol_to_company(self, symbol: str) -> str:
-        cmap = {"RELIANCE": "Reliance Industries", "TCS": "Tata Consultancy Services",
-                "INFY": "Infosys", "HDFCBANK": "HDFC Bank", "ICICIBANK": "ICICI Bank",
-                "SBIN": "State Bank India", "TATAMOTORS": "Tata Motors",
-                "WIPRO": "Wipro", "BAJFINANCE": "Bajaj Finance",
-                "ADANIENT": "Adani Enterprises", "ITC": "ITC Limited",
-                "ZOMATO": "Zomato", "INDIGO": "IndiGo airline"}
-        return cmap.get(symbol, symbol)
+    def _symbol_to_company(self, sym: str) -> str:
+        m = {"RELIANCE":"Reliance Industries","TCS":"Tata Consultancy",
+             "INFY":"Infosys","HDFCBANK":"HDFC Bank","ICICIBANK":"ICICI Bank",
+             "SBIN":"State Bank India","TATAMOTORS":"Tata Motors","WIPRO":"Wipro",
+             "BAJFINANCE":"Bajaj Finance","ADANIENT":"Adani Enterprises",
+             "ITC":"ITC Limited","ZOMATO":"Zomato","INDIGO":"IndiGo"}
+        return m.get(sym, sym)
 
-    def _symbol_in_text(self, symbol: str, text: str) -> bool:
+    def _symbol_in_text(self, sym: str, text: str) -> bool:
         hints = {"RELIANCE":"reliance","TCS":"tata consultancy","INFY":"infosys",
                  "HDFCBANK":"hdfc bank","ICICIBANK":"icici","SBIN":"sbi",
                  "TATAMOTORS":"tata motors","WIPRO":"wipro","BAJFINANCE":"bajaj finance",
-                 "ITC":"itc","ADANIENT":"adani enterprises","ZOMATO":"zomato"}
-        hint = hints.get(symbol, symbol.lower())
-        return hint in text.lower() or symbol.lower() in text.lower()
+                 "ITC":"itc","ADANIENT":"adani","ZOMATO":"zomato","INDIGO":"indigo"}
+        hint = hints.get(sym, sym.lower())
+        return hint in text.lower() or sym.lower() in text.lower()

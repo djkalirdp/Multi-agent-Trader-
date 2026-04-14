@@ -579,9 +579,15 @@ nav {
         <div class="field">
           <label>Model</label>
           <select id="claude_model">
-            <option value="claude-opus-4-5"    {% if config.claude_model == 'claude-opus-4-5'    %}selected{% endif %}>claude-opus-4-5 (Best)</option>
-            <option value="claude-sonnet-4-5"  {% if config.claude_model == 'claude-sonnet-4-5'  %}selected{% endif %}>claude-sonnet-4-5 (Faster)</option>
-            <option value="claude-haiku-4-5"   {% if config.claude_model == 'claude-haiku-4-5'   %}selected{% endif %}>claude-haiku-4-5 (Cheapest)</option>
+            <optgroup label="── Claude 4 (Latest) ──">
+              <option value="claude-opus-4-5"         {% if config.claude_model == 'claude-opus-4-5'         %}selected{% endif %}>claude-opus-4-5 (Most capable)</option>
+              <option value="claude-sonnet-4-5"       {% if config.claude_model == 'claude-sonnet-4-5'       %}selected{% endif %}>claude-sonnet-4-5 ★ Recommended</option>
+              <option value="claude-haiku-4-5"        {% if config.claude_model == 'claude-haiku-4-5'        %}selected{% endif %}>claude-haiku-4-5 (Fastest/Cheapest)</option>
+            </optgroup>
+            <optgroup label="── Claude 3.5 (Stable) ──">
+              <option value="claude-3-5-sonnet-20241022" {% if config.claude_model == 'claude-3-5-sonnet-20241022' %}selected{% endif %}>claude-3-5-sonnet (Reliable)</option>
+              <option value="claude-3-5-haiku-20241022"  {% if config.claude_model == 'claude-3-5-haiku-20241022'  %}selected{% endif %}>claude-3-5-haiku (Budget)</option>
+            </optgroup>
           </select>
           <span class="hint">// Opus = deepest analysis, Haiku = lowest latency</span>
         </div>
@@ -785,20 +791,48 @@ nav {
         <div class="field">
           <label>Researcher Model <span class="badge">AGENT 1</span></label>
           <select id="researcher_model">
-            <option value="gemini" {% if config.researcher_model == 'gemini' %}selected{% endif %}>Gemini 1.5 Pro (Recommended)</option>
-            <option value="claude" {% if config.researcher_model == 'claude' %}selected{% endif %}>Claude (if no Gemini key)</option>
-            <option value="ollama" {% if config.researcher_model == 'ollama' %}selected{% endif %}>Ollama (Offline)</option>
+            <optgroup label="── Gemini (Recommended) ──">
+              <option value="gemini-2.5-pro"        {% if config.researcher_model == 'gemini-2.5-pro'        %}selected{% endif %}>Gemini 2.5 Pro (Best reasoning)</option>
+              <option value="gemini-2.5-flash"       {% if config.researcher_model == 'gemini-2.5-flash'      %}selected{% endif %}>Gemini 2.5 Flash (Fast+Smart)</option>
+              <option value="gemini-2.0-flash"       {% if config.researcher_model == 'gemini-2.0-flash'      %}selected{% endif %}>Gemini 2.0 Flash (Recommended)</option>
+              <option value="gemini-2.0-flash-lite"  {% if config.researcher_model == 'gemini-2.0-flash-lite' %}selected{% endif %}>Gemini 2.0 Flash-Lite (Fastest)</option>
+              <option value="gemini-1.5-pro"         {% if config.researcher_model == 'gemini-1.5-pro'        %}selected{% endif %}>Gemini 1.5 Pro (2M context)</option>
+              <option value="gemini-1.5-flash"       {% if config.researcher_model == 'gemini-1.5-flash'      %}selected{% endif %}>Gemini 1.5 Flash (Free tier)</option>
+              <option value="gemini-1.5-flash-8b"    {% if config.researcher_model == 'gemini-1.5-flash-8b'   %}selected{% endif %}>Gemini 1.5 Flash-8B (Cheapest)</option>
+            </optgroup>
+            <optgroup label="── Claude ──">
+              <option value="claude" {% if config.researcher_model == 'claude' %}selected{% endif %}>Claude (use Claude settings)</option>
+            </optgroup>
+            <optgroup label="── Ollama (Offline) ──">
+              <option value="ollama"        {% if config.researcher_model == 'ollama'        %}selected{% endif %}>Ollama (use Ollama settings)</option>
+              <option value="ollama-llama3" {% if config.researcher_model == 'ollama-llama3' %}selected{% endif %}>Ollama → llama3</option>
+              <option value="ollama-mistral"{% if config.researcher_model == 'ollama-mistral'%}selected{% endif %}>Ollama → mistral</option>
+              <option value="ollama-deepseek-r1"{% if config.researcher_model == 'ollama-deepseek-r1'%}selected{% endif %}>Ollama → deepseek-r1</option>
+              <option value="ollama-phi3"   {% if config.researcher_model == 'ollama-phi3'   %}selected{% endif %}>Ollama → phi3 (lightweight)</option>
+            </optgroup>
           </select>
-          <span class="hint">// Gathers news, fundamentals, OSINT data</span>
+          <span class="hint">// Agent 1: gathers news, fundamentals, OSINT</span>
         </div>
         <div class="field">
           <label>Decision Model <span class="badge">AGENT 2</span></label>
           <select id="decision_model">
-            <option value="claude" {% if config.decision_model == 'claude' %}selected{% endif %}>Claude (Recommended)</option>
-            <option value="gemini" {% if config.decision_model == 'gemini' %}selected{% endif %}>Gemini</option>
-            <option value="ollama" {% if config.decision_model == 'ollama' %}selected{% endif %}>Ollama (Offline)</option>
+            <optgroup label="── Claude (Recommended) ──">
+              <option value="claude" {% if config.decision_model == 'claude' %}selected{% endif %}>Claude (use Claude settings)</option>
+            </optgroup>
+            <optgroup label="── Gemini ──">
+              <option value="gemini-2.5-pro"        {% if config.decision_model == 'gemini-2.5-pro'        %}selected{% endif %}>Gemini 2.5 Pro (Best reasoning)</option>
+              <option value="gemini-2.5-flash"       {% if config.decision_model == 'gemini-2.5-flash'      %}selected{% endif %}>Gemini 2.5 Flash</option>
+              <option value="gemini-2.0-flash"       {% if config.decision_model == 'gemini-2.0-flash'      %}selected{% endif %}>Gemini 2.0 Flash</option>
+              <option value="gemini-1.5-pro"         {% if config.decision_model == 'gemini-1.5-pro'        %}selected{% endif %}>Gemini 1.5 Pro</option>
+            </optgroup>
+            <optgroup label="── Ollama (Offline) ──">
+              <option value="ollama"        {% if config.decision_model == 'ollama'        %}selected{% endif %}>Ollama (use Ollama settings)</option>
+              <option value="ollama-deepseek-r1"{% if config.decision_model == 'ollama-deepseek-r1'%}selected{% endif %}>Ollama → deepseek-r1 (reasoning)</option>
+              <option value="ollama-llama3" {% if config.decision_model == 'ollama-llama3' %}selected{% endif %}>Ollama → llama3</option>
+              <option value="ollama-mistral"{% if config.decision_model == 'ollama-mistral'%}selected{% endif %}>Ollama → mistral</option>
+            </optgroup>
           </select>
-          <span class="hint">// Final trade decision + strategy selection</span>
+          <span class="hint">// Agent 2: final trade decision + strategy</span>
         </div>
       </div>
 
@@ -818,9 +852,19 @@ nav {
           <div class="field">
             <label>Gemini Model</label>
             <select id="gemini_model">
-              <option value="gemini-1.5-pro"   {% if config.gemini_model == 'gemini-1.5-pro'   %}selected{% endif %}>gemini-1.5-pro (2M context)</option>
-              <option value="gemini-1.5-flash"  {% if config.gemini_model == 'gemini-1.5-flash' %}selected{% endif %}>gemini-1.5-flash (Faster)</option>
-              <option value="gemini-2.0-flash"  {% if config.gemini_model == 'gemini-2.0-flash' %}selected{% endif %}>gemini-2.0-flash (Latest)</option>
+              <optgroup label="── Gemini 2.5 (Latest) ──">
+                <option value="gemini-2.5-pro"        {% if config.gemini_model == 'gemini-2.5-pro'        %}selected{% endif %}>gemini-2.5-pro (Best, paid)</option>
+                <option value="gemini-2.5-flash"       {% if config.gemini_model == 'gemini-2.5-flash'      %}selected{% endif %}>gemini-2.5-flash ★ Recommended</option>
+              </optgroup>
+              <optgroup label="── Gemini 2.0 ──">
+                <option value="gemini-2.0-flash"       {% if config.gemini_model == 'gemini-2.0-flash'      %}selected{% endif %}>gemini-2.0-flash (Free tier)</option>
+                <option value="gemini-2.0-flash-lite"  {% if config.gemini_model == 'gemini-2.0-flash-lite' %}selected{% endif %}>gemini-2.0-flash-lite (Fastest)</option>
+              </optgroup>
+              <optgroup label="── Gemini 1.5 (Stable) ──">
+                <option value="gemini-1.5-pro"         {% if config.gemini_model == 'gemini-1.5-pro'        %}selected{% endif %}>gemini-1.5-pro (2M context)</option>
+                <option value="gemini-1.5-flash"        {% if config.gemini_model == 'gemini-1.5-flash'      %}selected{% endif %}>gemini-1.5-flash (Balanced)</option>
+                <option value="gemini-1.5-flash-8b"    {% if config.gemini_model == 'gemini-1.5-flash-8b'   %}selected{% endif %}>gemini-1.5-flash-8B (Cheapest)</option>
+              </optgroup>
             </select>
           </div>
         </div>

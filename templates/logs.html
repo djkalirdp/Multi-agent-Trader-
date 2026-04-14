@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Agent Logs — TRADE_AGENT</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0a;--bg1:#111;--bg2:#161616;--border:#2a2a2a;--orange:#ff6600;--green:#00cc44;--red:#ff2222;--yellow:#ffcc00;--cyan:#00ccff;--white:#e8e8e8;--white2:#ccc;--white3:#999;--white4:#666;--mono:'IBM Plex Mono',monospace}
+html{font-size:12px}body{background:var(--bg);color:var(--white2);font-family:var(--mono);min-height:100vh;display:flex;flex-direction:column}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#000}::-webkit-scrollbar-thumb{background:var(--white4)}
+#hdr{background:var(--orange);color:#000;height:24px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-size:11px;font-weight:700;letter-spacing:.5px;flex-shrink:0}
+#nav{background:var(--bg1);border-bottom:1px solid var(--border);height:28px;display:flex;align-items:center;padding:0 10px;gap:16px;font-size:10px;flex-shrink:0}
+#nav a{color:var(--white3);text-decoration:none;padding:3px 8px;border:1px solid transparent}
+#nav a:hover,#nav a.active{border-color:var(--orange);color:var(--orange)}
+#toolbar{background:var(--bg1);border-bottom:1px solid var(--border);height:32px;display:flex;align-items:center;padding:0 10px;gap:8px;flex-shrink:0;font-size:10px}
+.btn{background:transparent;border:1px solid;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:4px 12px;cursor:pointer;transition:all .15s}
+.btn-orange{border-color:var(--orange);color:var(--orange)}.btn-orange:hover{background:var(--orange);color:#000}
+.btn-red{border-color:var(--red);color:var(--red)}.btn-red:hover{background:var(--red);color:#fff}
+#autoRefreshLabel{color:var(--white4);margin-left:8px}
+#fileInfo{margin-left:auto;color:var(--white4);font-size:9px}
+#logContainer{flex:1;overflow-y:auto;padding:8px 10px;background:var(--bg);font-size:10px;line-height:1.6}
+.log-line{padding:1px 0;border-bottom:1px solid rgba(42,42,42,.3);white-space:pre-wrap;word-break:break-all}
+.log-line:hover{background:rgba(255,255,255,.02)}
+/* Color coding by level */
+.line-INFO{color:var(--white3)}
+.line-WARNING{color:var(--yellow)}
+.line-ERROR,.line-CRITICAL{color:var(--red)}
+.line-DEBUG{color:var(--white4)}
+/* Highlight keywords */
+.kw-TRADE{color:var(--orange);font-weight:700}
+.kw-OK{color:var(--green)}
+.kw-KILL{color:var(--red);font-weight:700}
+.kw-ORDER{color:var(--orange);font-weight:700}
+#status{background:var(--bg1);border-top:1px solid var(--border);padding:4px 10px;font-size:9px;color:var(--white4);display:flex;justify-content:space-between;flex-shrink:0}
+</style>
+</head>
+<body>
+<div id="hdr">
+  <span>◆ TRADE_AGENT — LOG VIEWER</span>
+  <span id="hdrTime">--:--:-- IST</span>
+</div>
+<div id="nav">
+  <a href="/dashboard">DASHBOARD</a>
+  <a href="/settings">SETTINGS</a>
+  <a href="/memory">MEMORY</a>
+  <a href="/premarket">PRE/POST</a>
+  <a href="/logs" class="active">LOGS</a>
+</div>
+<div id="toolbar">
+  <button class="btn btn-orange" onclick="refreshLogs()">↺ REFRESH</button>
+  <button class="btn btn-red" onclick="clearLogs()">✕ CLEAR</button>
+  <label style="display:flex;align-items:center;gap:6px;color:var(--white3);cursor:pointer">
+    <input type="checkbox" id="autoRefresh" checked style="cursor:pointer"> AUTO-REFRESH 5s
+  </label>
+  <label style="display:flex;align-items:center;gap:6px;color:var(--white3);cursor:pointer">
+    <input type="checkbox" id="autoScroll" checked style="cursor:pointer"> AUTO-SCROLL
+  </label>
+  <select id="nLines" onchange="refreshLogs()" style="background:var(--bg2);border:1px solid var(--border);color:var(--white2);font-family:var(--mono);font-size:10px;padding:3px 6px">
+    <option value="100">Last 100 lines</option>
+    <option value="200" selected>Last 200 lines</option>
+    <option value="500">Last 500 lines</option>
+    <option value="1000">Last 1000 lines</option>
+  </select>
+  <div id="fileInfo">Log file: data/logs/agent.log</div>
+</div>
+<div id="logContainer">
+{% for line in lines %}
+<div class="log-line {{ 'line-'+line.split('|')[1].strip() if '|' in line else 'line-INFO' }}">{{ line }}</div>
+{% else %}
+<div style="color:var(--white4);padding:20px;text-align:center">No log entries yet. Start the agent to generate logs.</div>
+{% endfor %}
+</div>
+<div id="status">
+  <span id="lineCount">{{ lines|length }} lines loaded</span>
+  <span id="lastRefresh">Loaded at {{ now if now else '--' }}</span>
+</div>
+
+<script>
+function tick(){document.getElementById('hdrTime').textContent=new Date().toLocaleTimeString('en-IN',{hour12:false,timeZone:'Asia/Kolkata'})+' IST'}
+setInterval(tick,1000);tick();
+
+function colorize(line){
+  return line
+    .replace(/\bTRADE\b/g,'<span class="kw-TRADE">TRADE</span>')
+    .replace(/\bORDER\b/g,'<span class="kw-ORDER">ORDER</span>')
+    .replace(/\bKILL\b/g,'<span class="kw-KILL">KILL</span>')
+    .replace(/(connected|OK|success|SUCCESS)/gi,'<span class="kw-OK">$1</span>');
+}
+
+function getLevelClass(line){
+  if(line.includes('| ERROR') || line.includes('| CRITICAL')) return 'line-ERROR';
+  if(line.includes('| WARNING')) return 'line-WARNING';
+  if(line.includes('| DEBUG')) return 'line-DEBUG';
+  return 'line-INFO';
+}
+
+async function refreshLogs(){
+  const n = document.getElementById('nLines').value;
+  try{
+    const r = await fetch('/api/logs?n='+n);
+    const d = await r.json();
+    const cont = document.getElementById('logContainer');
+    cont.innerHTML = d.lines.length
+      ? d.lines.map(l=>`<div class="log-line ${getLevelClass(l)}">${colorize(l)}</div>`).join('')
+      : '<div style="color:var(--white4);padding:20px;text-align:center">No log entries.</div>';
+    document.getElementById('lineCount').textContent = d.lines.length + ' lines';
+    document.getElementById('lastRefresh').textContent = 'Refreshed: ' + new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'});
+    if(document.getElementById('autoScroll').checked) cont.scrollTop = cont.scrollHeight;
+  }catch(e){console.error(e)}
+}
+
+async function clearLogs(){
+  if(!confirm('Clear all log entries?')) return;
+  await fetch('/api/logs/clear',{method:'POST'});
+  refreshLogs();
+}
+
+// Auto-refresh
+let refreshTimer = setInterval(()=>{if(document.getElementById('autoRefresh').checked) refreshLogs();}, 5000);
+document.getElementById('autoRefresh').onchange = e => {
+  clearInterval(refreshTimer);
+  if(e.target.checked) refreshTimer = setInterval(()=>refreshLogs(), 5000);
+};
+</script>
+</body>
+</html>

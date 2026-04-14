@@ -115,16 +115,30 @@ class RiskManager:
             return {'allowed': False, 'reason': f'Max open positions ({self.max_positions}) reached.'}
 
         now = datetime.now()
-        # Bug 11: effective trading window 9:30-15:15 (9:15-9:30 = noise window)
-        noise_end    = now.replace(hour=9,  minute=30, second=0, microsecond=0)
-        market_open  = now.replace(hour=9,  minute=15, second=0, microsecond=0)
-        market_close = now.replace(hour=15, minute=15, second=0, microsecond=0)
+        # Bug 11: 9:15-9:30 noise window
+        # Bug 16: ENTRY_CUTOFF 2:45 PM + HARD_EXIT_TIME 3:10 PM (broker auto-sq-off trap)
+        market_open    = now.replace(hour=9,  minute=15, second=0, microsecond=0)
+        noise_end      = now.replace(hour=9,  minute=30, second=0, microsecond=0)
+        entry_cutoff   = now.replace(hour=14, minute=45, second=0, microsecond=0)
+        hard_exit_time = now.replace(hour=15, minute=10, second=0, microsecond=0)
+        market_close   = now.replace(hour=15, minute=15, second=0, microsecond=0)
+
         if not (market_open <= now <= market_close):
             return {'allowed': False, 'reason': 'Market closed. Trading: 9:30 AM – 3:15 PM IST'}
         if now < noise_end:
             return {'allowed': False, 'reason': '⏳ 9:15–9:30 noise window — waiting for price discovery'}
+        if now >= hard_exit_time:
+            return {'allowed': False, 'reason': '⏰ 3:10 PM hard exit zone — no new trades. Broker sq-off at 3:20 PM.', 'hard_exit': True}
+        if now >= entry_cutoff:
+            return {'allowed': False, 'reason': '🕑 2:45 PM entry cutoff — no new positions. Too close to broker sq-off.', 'entry_cutoff': True}
 
         return {'allowed': True, 'reason': 'All risk checks passed ✓'}
+
+    def is_hard_exit_time(self) -> bool:
+        """Returns True when agent must square off all open intraday positions (3:10 PM)."""
+        now = datetime.now()
+        t   = now.replace(hour=15, minute=10, second=0, microsecond=0)
+        return now >= t and now.hour < 16
 
     def force_kill_switch(self):
         self.kill_switch_on = True
